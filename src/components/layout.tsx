@@ -3,19 +3,23 @@ import {
   ArrowLeft,
   BookmarkSimple,
   ChartLineUp,
+  Cursor,
   GearSix,
   House,
+  Info,
+  Keyboard,
   Microphone,
   PaintBrush,
+  Palette,
   BookOpen,
-  SignOut,
-  User,
+  Sliders,
   Waveform,
 } from "@phosphor-icons/react"
 import {
   Link,
   useLocation,
   useMatchRoute,
+  useNavigate,
 } from "@tanstack/react-router"
 
 import {
@@ -69,38 +73,21 @@ const NAV_GROUPS: SidebarNavGroup[] = [
   },
 ]
 
-type SettingsRow = {
+type SettingsItem = {
   id: string
   label: string
   icon: IconLike
   onClick?: () => void
 }
 
-type SettingsGroup = {
-  label: string
-  items: SettingsRow[]
-}
-
-const SETTINGS_GROUPS: SettingsGroup[] = [
-  {
-    label: "Preferences",
-    items: [
-      { id: "audio", label: "Audio & recording", icon: Microphone },
-    ],
-  },
-  {
-    label: "App",
-    items: [
-      { id: "general", label: "General", icon: GearSix },
-    ],
-  },
-  {
-    label: "Account",
-    items: [
-      { id: "account", label: "Account", icon: User },
-      { id: "signout", label: "Sign out", icon: SignOut },
-    ],
-  },
+const SETTINGS_ITEMS: SettingsItem[] = [
+  { id: "general", label: "General", icon: GearSix },
+  { id: "dictation", label: "Dictation", icon: Microphone },
+  { id: "shortcut", label: "Shortcut", icon: Keyboard },
+  { id: "text-insertion", label: "Text insertion", icon: Cursor },
+  { id: "appearance", label: "Appearance", icon: Palette },
+  { id: "advanced", label: "Advanced", icon: Sliders },
+  { id: "about", label: "About", icon: Info },
 ]
 
 const NAV_BUTTON_CLASS = cn(
@@ -184,35 +171,23 @@ function SidebarNav() {
 function SettingsSidebarPanel() {
   return (
     <SidebarContent className="gap-1 px-2">
-      <h2 className="px-1 pt-1 pb-2 text-[13px] font-semibold tracking-tight text-foreground">
-        Settings
-      </h2>
-      {SETTINGS_GROUPS.map((group) => (
-        <SidebarGroup key={group.label} className="p-0">
-          <SidebarGroupLabel className="px-2 text-[11px] font-medium tracking-wider text-muted-foreground/70 uppercase">
-            {group.label}
-          </SidebarGroupLabel>
-          <SidebarGroupContent>
-            <SidebarMenu className="gap-0.5">
-              {group.items.map((item) => {
-                const Icon = item.icon
-                return (
-                  <SidebarMenuItem key={item.id}>
-                    <SidebarMenuButton
-                      tooltip={item.label}
-                      onClick={item.onClick}
-                      className={NAV_BUTTON_CLASS}
-                    >
-                      <Icon weight="regular" className={NAV_ICON_CLASS} />
-                      <span className="truncate">{item.label}</span>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                )
-              })}
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
-      ))}
+      <SidebarMenu className="gap-0.5">
+        {SETTINGS_ITEMS.map((item) => {
+          const Icon = item.icon
+          return (
+            <SidebarMenuItem key={item.id}>
+              <SidebarMenuButton
+                tooltip={item.label}
+                onClick={item.onClick}
+                className={NAV_BUTTON_CLASS}
+              >
+                <Icon weight="regular" className={NAV_ICON_CLASS} />
+                <span className="truncate">{item.label}</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          )
+        })}
+      </SidebarMenu>
     </SidebarContent>
   )
 }
@@ -225,9 +200,11 @@ function SidebarFooterNav({
   onToggle: () => void
 }) {
   const { open, setOpen } = useSidebar()
+  const navigate = useNavigate()
   const handleClick = () => {
     if (!isOpen && !open) setOpen(true)
     onToggle()
+    navigate({ to: isOpen ? "/" : "/settings" })
   }
   return (
     <SidebarFooter className="p-2">
@@ -258,9 +235,9 @@ function AppSidebar() {
   const toggle = React.useCallback(() => setSettingsOpen((o) => !o), [])
 
   return (
-    <Sidebar collapsible="icon" className="border-r-0">
+    <Sidebar variant="sidebar" collapsible="icon" className="border-r-0">
       <SidebarHeader className="p-2 pb-1">
-        <AppBrand />
+        {settingsOpen ? null : <AppBrand />}
       </SidebarHeader>
       {settingsOpen ? <SettingsSidebarPanel /> : <SidebarNav />}
       <SidebarFooterNav isOpen={settingsOpen} onToggle={toggle} />
@@ -275,6 +252,7 @@ const ROUTE_TITLES: Record<string, string> = {
   "/dictionary": "Dictionary",
   "/snippets": "Snippets",
   "/style": "Style",
+  "/settings": "Settings",
 }
 
 function useRouteTitle() {
@@ -323,10 +301,11 @@ type LayoutProps = React.ComponentProps<typeof SidebarProvider> & {
   header?: AppShellHeaderProps
 }
 
-export function Layout({ children, header, ...providerProps }: LayoutProps) {
+export function Layout({ children, header, className, ...providerProps }: LayoutProps) {
   return (
     <SidebarProvider
       defaultOpen={true}
+      className={cn("h-svh", className)}
       {...providerProps}
     >
       <AppSidebar />
@@ -334,7 +313,7 @@ export function Layout({ children, header, ...providerProps }: LayoutProps) {
         <AppShellHeader {...(header ?? {})} />
         <div
           data-ui-scroll-container
-          className="flex flex-1 flex-col bg-background"
+          className="flex min-h-0 flex-1 flex-col bg-background"
         >
           {children}
         </div>

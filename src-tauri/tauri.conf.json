@@ -17,6 +17,8 @@
         "title": "whisply",
         "width": 1400,
         "height": 918,
+        "minWidth": 768,
+        "minHeight": 500,
         "center": true,
         "visible": false
       }

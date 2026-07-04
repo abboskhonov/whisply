@@ -20,7 +20,7 @@ export function StatCard({
   return (
     <div
       className={cn(
-        "flex min-w-0 flex-col gap-3 rounded-lg border border-border/60 bg-card/40 p-4",
+        "flex min-w-0 flex-col gap-3 rounded-lg border border-border/60 bg-muted/50 p-4",
         className
       )}
     >

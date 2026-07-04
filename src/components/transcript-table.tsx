@@ -47,7 +47,7 @@ export function TranscriptRow({
 }: TranscriptRowProps) {
   return (
     <li className={cn("group/row", className)}>
-      <div className="grid grid-cols-[5.5rem_1fr_auto] items-center gap-4 px-4 py-3 transition-colors group-hover/row:bg-muted/30">
+      <div className="grid grid-cols-[5.5rem_1fr_auto] items-center gap-4 px-4 py-3 transition-colors group-hover/row:bg-muted/60">
         <time className="text-xs font-medium tabular-nums text-muted-foreground">
           {time}
         </time>

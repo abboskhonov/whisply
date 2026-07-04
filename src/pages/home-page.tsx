@@ -3,13 +3,11 @@ import {
   DotsThree,
   Flag,
   Info,
-  Microphone,
   TrendUp,
-  UploadSimple,
 } from "@phosphor-icons/react"
 
 import { Button } from "@/components/ui/button"
-import { PageHeader, PageShell, Section, SectionHeader } from "@/components/page"
+import { PageHeader, PageShell, Section } from "@/components/page"
 import { StatCard, StatGrid } from "@/components/stats"
 import {
   TranscriptGroup,
@@ -65,29 +63,9 @@ function RowActions() {
 export function HomePage() {
   return (
     <PageShell>
-      <PageHeader
-        meta="Welcome back"
-        title="Home"
-        description="Pick up where you left off, or start something new."
-        actions={
-          <>
-            <Button variant="outline" size="sm">
-              <UploadSimple weight="bold" className="size-3.5" />
-              Import audio
-            </Button>
-            <Button size="sm">
-              <Microphone weight="fill" className="size-3.5" />
-              New recording
-            </Button>
-          </>
-        }
-      />
+      <PageHeader title="Home" actions={null} />
 
       <Section>
-        <SectionHeader
-          title="Today"
-          description="Your dictation at a glance."
-        />
         <StatGrid>
           <StatCard
             value="2,847"
@@ -95,13 +73,13 @@ export function HomePage() {
             labelTrailing={
               <Info
                 weight="regular"
-                className="size-3 text-muted-foreground/60"
+                className="size-3 text-muted-foreground/80"
               />
             }
           >
             <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
-              <TrendUp weight="bold" className="size-3 text-emerald-600" />
-              <span className="text-emerald-600">+35%</span>
+              <TrendUp weight="bold" className="size-3 text-success" />
+              <span className="font-semibold text-success">+35%</span>
               <span>vs yesterday (2,108)</span>
             </p>
           </StatCard>
@@ -112,12 +90,12 @@ export function HomePage() {
             labelTrailing={
               <Info
                 weight="regular"
-                className="size-3 text-muted-foreground/60"
+                className="size-3 text-muted-foreground/80"
               />
             }
           >
             <p className="text-xs text-muted-foreground">
-              ≈ <span className="font-medium text-foreground">1h 12m</span>{" "}
+              ≈ <span className="font-semibold text-foreground">1h 12m</span>{" "}
               saved this week
             </p>
           </StatCard>
@@ -128,12 +106,12 @@ export function HomePage() {
             labelTrailing={
               <Info
                 weight="regular"
-                className="size-3 text-muted-foreground/60"
+                className="size-3 text-muted-foreground/80"
               />
             }
           >
             <p className="text-xs text-muted-foreground">
-              <span className="font-medium text-foreground">8</span> active
+              <span className="font-semibold text-foreground">8</span> active
               days this week
             </p>
           </StatCard>
@@ -141,10 +119,6 @@ export function HomePage() {
       </Section>
 
       <Section>
-        <SectionHeader
-          title="Latest transcripts"
-          description="What Whisply captured for you, newest first."
-        />
         <div className="flex flex-col gap-6">
           <TranscriptGroup label="Today" count={TODAY_TRANSCRIPTS.length}>
             {TODAY_TRANSCRIPTS.map((row) => (
