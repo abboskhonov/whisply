@@ -230,11 +230,24 @@ function Sidebar({
         data-slot="sidebar-container"
         data-side={side}
         className={cn(
-          "fixed inset-y-0 z-10 hidden h-svh w-(--sidebar-width) transition-[left,right,width] duration-200 ease-linear data-[side=left]:left-0 data-[side=left]:group-data-[collapsible=offcanvas]:left-[calc(var(--sidebar-width)*-1)] data-[side=right]:right-0 data-[side=right]:group-data-[collapsible=offcanvas]:right-[calc(var(--sidebar-width)*-1)] md:flex",
+          "fixed inset-y-0 z-10 hidden h-svh w-(--sidebar-width) data-[side=left]:left-0 data-[side=right]:right-0 md:flex",
+          // GPU-accelerated transform transition for sidebar & icon collapse
+          // (replaces left/right/width animations which cause layout reflow on WebKitGTK)
+          variant !== "floating" && variant !== "inset"
+            ? cn(
+                "transition-transform duration-200 ease-linear backface-hidden will-change-transform",
+                // Offcanvas: slide entire sidebar off-screen
+                "data-[side=left]:group-data-[collapsible=offcanvas]:-translate-x-full",
+                "data-[side=right]:group-data-[collapsible=offcanvas]:translate-x-full",
+                // Icon: slide so only icon strip is visible (full width kept, just shifted)
+                "group-data-[collapsible=icon]:-translate-x-[calc(var(--sidebar-width)-var(--sidebar-width-icon))]",
+                "data-[side=right]:group-data-[collapsible=icon]:translate-x-[calc(var(--sidebar-width)-var(--sidebar-width-icon))]",
+              )
+            : "",
           // Adjust the padding for floating and inset variants.
           variant === "floating" || variant === "inset"
-            ? "p-2 group-data-[collapsible=icon]:w-[calc(var(--sidebar-width-icon)+(--spacing(4))+2px)]"
-            : "group-data-[collapsible=icon]:w-(--sidebar-width-icon) group-data-[side=left]:border-r group-data-[side=right]:border-l",
+            ? "p-2 group-data-[collapsible=icon]:w-[calc(var(--sidebar-width-icon)+(--spacing(4))+2px)] transition-[width] duration-200 ease-linear"
+            : "group-data-[side=left]:border-r group-data-[side=right]:border-l",
           className
         )}
         {...props}

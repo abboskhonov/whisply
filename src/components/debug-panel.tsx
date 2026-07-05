@@ -12,15 +12,15 @@ import { currentMonitor, getCurrentWindow } from "@tauri-apps/api/window"
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow"
 import { attachConsole } from "@tauri-apps/plugin-log"
 import {
-  AlertTriangleIcon,
-  CopyIcon,
-  EllipsisIcon,
-  ExternalLinkIcon,
-  PinIcon,
-  RefreshCwIcon,
-  TerminalSquareIcon,
-  XIcon,
-} from "lucide-react"
+  Warning,
+  Copy,
+  DotsThreeVertical,
+  ArrowSquareOut,
+  PushPin,
+  ArrowsClockwise,
+  Terminal,
+  X,
+} from "@phosphor-icons/react"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -1419,7 +1419,7 @@ export function DebugPanel() {
         <div className="flex items-center justify-between gap-3">
           <div className="min-w-0">
             <h2 className="flex items-center gap-2 text-[13px] font-semibold tracking-tight text-foreground">
-              <TerminalSquareIcon className="size-3.5" />
+              <Terminal className="size-3.5" />
               Development Debug Panel
             </h2>
           </div>
@@ -1433,23 +1433,23 @@ export function DebugPanel() {
               aria-label={attached ? "Detach debug panel" : "Attach debug panel"}
               title={attached ? "Detach debug panel" : "Attach debug panel"}
             >
-              <PinIcon className="size-3.5" />
+              <PushPin className="size-3.5" />
             </Button>
             <DropdownMenu>
               <DropdownMenuTrigger
                 render={
                   <Button variant="ghost" size="icon-sm" className="size-7" aria-label="Debug panel options">
-                    <EllipsisIcon className="size-3.5" />
+                    <DotsThreeVertical className="size-3.5" />
                   </Button>
                 }
               />
               <DropdownMenuContent align="end" className="w-52">
                 <DropdownMenuItem onClick={() => void handleCopySnapshot()}>
-                  <CopyIcon className="size-3.5" />
+                  <Copy className="size-3.5" />
                   {copied ? "Copied snapshot" : "Copy snapshot"}
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => window.location.reload()}>
-                  <RefreshCwIcon className="size-3.5" />
+                  <ArrowsClockwise className="size-3.5" />
                   Reload app
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
@@ -1480,7 +1480,7 @@ export function DebugPanel() {
               onClick={() => setOpen(false)}
               aria-label="Close debug panel"
             >
-              <XIcon className="size-3.5" />
+              <X className="size-3.5" />
             </Button>
           </div>
         </div>
@@ -1802,7 +1802,7 @@ export function DebugPanel() {
                 >
                   {externalLinks.map((href, index) => (
                     <li key={`${href}-${index}`} className="flex gap-2 rounded-md border border-border/20 bg-card p-2">
-                      <ExternalLinkIcon className="mt-0.5 size-3 shrink-0 text-muted-foreground" />
+                      <ArrowSquareOut className="mt-0.5 size-3 shrink-0 text-muted-foreground" />
                       <span className="font-mono break-all">{href}</span>
                     </li>
                   ))}
@@ -1842,7 +1842,7 @@ export function DebugPanel() {
                       {value ?? "Unavailable"}
                     </div>
                     <Button variant="ghost" size="sm" disabled={!value} onClick={() => value && void handleCopyText(value)}>
-                      <CopyIcon className="size-3.5" />
+                      <Copy className="size-3.5" />
                       Copy
                     </Button>
                   </div>
@@ -1981,7 +1981,7 @@ export function DebugPanel() {
                       className="rounded-md border border-border/20 bg-card p-2.5"
                     >
                       <div className="mb-1 flex items-center gap-2">
-                        <AlertTriangleIcon className="size-3.5 text-destructive" />
+                        <Warning className="size-3.5 text-destructive" />
                         <span className="font-medium">{entry.source}</span>
                         <span className="text-muted-foreground">
                           {formatTimestamp(entry.timestamp)}

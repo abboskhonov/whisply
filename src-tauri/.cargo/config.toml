@@ -1,0 +1,8 @@
+# Cross-compilation: Windows (MinGW) from Linux
+[target.x86_64-pc-windows-gnu]
+linker = "x86_64-w64-mingw32-gcc"
+runner = "wine"
+
+[target.x86_64-pc-windows-msvc]
+# MSVC cross-compilation from Linux requires the Windows SDK.
+# Use MinGW instead (above) or build natively on Windows.

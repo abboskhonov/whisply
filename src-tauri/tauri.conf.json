@@ -36,6 +36,25 @@
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
-    ]
+    ],
+    "linux": {
+      "deb": {
+        "depends": []
+      },
+      "rpm": {
+        "depends": [
+          "webkit2gtk4.1",
+          "gtk3",
+          "librsvg2",
+          "openssl"
+        ]
+      },
+      "appimage": {}
+    },
+    "resources": [],
+    "publisher": null,
+    "license": null,
+    "homepage": null,
+    "category": "Utility"
   }
 }
