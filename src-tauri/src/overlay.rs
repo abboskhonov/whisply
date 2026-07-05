@@ -1,6 +1,6 @@
 use serde::Serialize;
 use std::sync::atomic::{AtomicBool, Ordering};
-use tauri::{AppHandle, Emitter, Manager};
+use tauri::{AppHandle, Emitter, Manager, WebviewUrl, WebviewWindowBuilder};
 
 const OVERLAY_LABEL: &str = "recording_overlay";
 
@@ -17,15 +17,46 @@ pub struct OverlayStatePayload {
     pub error: String,
 }
 
+/// Ensure the overlay webview exists. Called once at startup as a safety
+/// net — the static config in tauri.conf.json should already create it,
+/// but if the dev process started before the config was updated, this
+/// catches up. Also useful if a future user disables the window in
+/// the config without breaking the whole push-to-talk flow.
+pub fn ensure_window(app: &AppHandle) {
+    if app.get_webview_window(OVERLAY_LABEL).is_some() {
+        return;
+    }
+    log::warn!(
+        "recording_overlay window missing from config — creating at runtime"
+    );
+    let url = WebviewUrl::App("overlay.html".into());
+    let _ = WebviewWindowBuilder::new(app, OVERLAY_LABEL, url)
+        .title("Whisply Overlay")
+        .inner_size(420.0, 120.0)
+        .decorations(false)
+        .transparent(true)
+        .always_on_top(true)
+        .skip_taskbar(true)
+        .resizable(false)
+        .focused(false)
+        .visible(false)
+        .shadow(false)
+        .center()
+        .build();
+}
+
 /// Bring the overlay window up to the top of the primary monitor and show it.
 /// On Linux the compositor placement is sometimes off, so we explicitly set
 /// the position from Rust after showing — this also lets us place the
 /// overlay even when the main window is minimized.
 pub fn show(app: &AppHandle, state: &str, device: &str, shortcut: &str) {
+    ensure_window(app);
     position_overlay(app);
 
     if let Some(window) = app.get_webview_window(OVERLAY_LABEL) {
         let _ = window.show();
+    } else {
+        log::error!("recording_overlay window not found even after ensure_window");
     }
 
     let _ = app.emit_to(
@@ -99,6 +130,7 @@ pub fn is_visible(app: &AppHandle) -> bool {
 /// not ready, so we don't crash on a missing event target.
 pub fn mark_ready() {
     OVERLAY_READY.store(true, Ordering::SeqCst);
+    log::info!("recording_overlay marked ready");
 }
 
 pub fn is_ready() -> bool {

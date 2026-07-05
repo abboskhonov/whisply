@@ -70,13 +70,21 @@ pub fn run() {
             }
         })
         .setup(|app| {
+            // Safety net: if the recording_overlay webview wasn't created
+            // from the static config (e.g. dev process started before the
+            // config was updated), create it now so push-to-talk still
+            // works after a hot reload.
+            let handle = app.handle().clone();
+            overlay::ensure_window(&handle);
+
             // Listen for the overlay's cancel button and stop capture + hide.
             // The cancel event is emitted from the overlay window with no
             // payload — the user just wants out.
-            let handle = app.handle().clone();
+            let h2 = handle.clone();
             app.listen("whisply://overlay-cancel", move |_event| {
-                let _ = audio::stop_audio_capture(handle.clone());
-                overlay::hide(&handle);
+                log::info!("overlay cancel received");
+                let _ = audio::stop_audio_capture(h2.clone());
+                overlay::hide(&h2);
             });
             Ok(())
         })

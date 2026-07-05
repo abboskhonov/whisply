@@ -7,6 +7,7 @@ use tauri::{AppHandle, Emitter, Manager};
 // We keep them as free functions so the listener closure can borrow the
 // AppHandle without juggling more captures.
 fn drive_press(app: &AppHandle, shortcut: &RegisteredShortcut) {
+    log::info!("push-to-talk press: {}", shortcut.key_str);
     // 1. Start audio capture (cpal). The global overlay reads this to
     //    drive the live waveform.
     if let Err(e) = crate::audio::start_audio_capture(app.clone(), None) {
@@ -27,6 +28,7 @@ fn drive_press(app: &AppHandle, shortcut: &RegisteredShortcut) {
 }
 
 fn drive_release(app: &AppHandle, shortcut: &RegisteredShortcut) {
+    log::info!("push-to-talk release: {}", shortcut.key_str);
     // 1. Stop capture.
     let _ = crate::audio::stop_audio_capture(app.clone());
     // 2. Switch the overlay to the transcribing state, then hide it
