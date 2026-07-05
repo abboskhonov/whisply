@@ -44,13 +44,18 @@ export function StepKeybindings({ onNext, onBack }: StepKeybindingsProps) {
       e.preventDefault()
       e.stopPropagation()
 
+      // Ignore modifier-only keydowns (e.g. pressing Ctrl alone fires
+      // a keydown with key="Control" before the actual letter arrives).
+      const MODIFIER_KEYS = new Set(["Control", "Alt", "Shift", "Meta"])
+      if (MODIFIER_KEYS.has(e.key)) return
+
       const mods: Modifier[] = []
       if (e.metaKey) mods.push("Super")
       if (e.ctrlKey) mods.push("Ctrl")
       if (e.altKey) mods.push("Alt")
       if (e.shiftKey) mods.push("Shift")
 
-      const key = e.key === "Meta" ? "V" : e.key.length === 1 ? e.key.toUpperCase() : e.key
+      const key = e.key.length === 1 ? e.key.toUpperCase() : e.key
 
       if (mods.length > 0) {
         setCombo({ modifiers: mods, key })
