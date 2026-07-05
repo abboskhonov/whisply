@@ -2,6 +2,8 @@ mod input;
 mod shortcut;
 mod system;
 
+
+
 use tauri::webview::PageLoadEvent;
 use tauri_plugin_opener::OpenerExt;
 use tauri_plugin_log::{Target, TargetKind};
@@ -46,16 +48,19 @@ pub fn run() {
                 .build(),
         )
         .plugin(tauri_plugin_opener::init())
-        .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(external_navigation_plugin())
+        .manage(shortcut::ShortcutRegistry::new())
+        .manage(shortcut::ListenerRunning::new())
         .invoke_handler(tauri::generate_handler![
             system::get_system_info,
             system::get_microphone_status,
             system::get_input_status,
             input::initialize_input,
             input::test_input_connection,
-            shortcut::register_global_shortcut,
-            shortcut::unregister_global_shortcut,
+            shortcut::start_shortcut_listener,
+            shortcut::register_shortcut_evdev,
+            shortcut::unregister_shortcut_evdev,
+            shortcut::unregister_all_shortcuts_evdev,
         ])
         .on_page_load(|webview, payload| {
             if webview.label() == "main" && matches!(payload.event(), PageLoadEvent::Finished) {

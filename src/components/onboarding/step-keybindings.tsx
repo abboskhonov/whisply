@@ -90,7 +90,7 @@ export function StepKeybindings({ onNext, onBack }: StepKeybindingsProps) {
     if (isTauri()) {
       const shortcutStr = comboToString(combo)
       try {
-        await invoke("register_global_shortcut", { shortcutKey: shortcutStr })
+        await invoke("register_shortcut_evdev", { shortcutKey: shortcutStr })
       } catch (err) {
         console.warn("Failed to register shortcut:", err)
       }

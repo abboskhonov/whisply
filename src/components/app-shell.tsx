@@ -93,7 +93,7 @@ export function Layout({
       const combo = JSON.parse(saved)
       const key = comboToShortcutString(combo)
       const { invoke } = await import("@tauri-apps/api/core")
-      await invoke("register_global_shortcut", { shortcutKey: key })
+      await invoke("register_shortcut_evdev", { shortcutKey: key })
     })
   }, [])
 
