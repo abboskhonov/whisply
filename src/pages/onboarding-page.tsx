@@ -92,13 +92,23 @@ export function OnboardingPage() {
         <StepIndicator steps={STEPS} currentIndex={step} />
       </header>
 
-      {/* Content */}
-      <div className="flex flex-1 items-center justify-center px-6 py-12">
-        <CurrentStep {...(stepProps as any)} />
+      {/*
+        Content. min-h-0 + overflow-y-auto so the step can grow taller than
+        the viewport (3 permission groups + the action footer) and the user
+        can still scroll to the Continue button. items-start so overflowing
+        content doesn't get clipped against the bottom edge.
+      */}
+      <div
+        data-ui-scroll-container
+        className="flex min-h-0 flex-1 flex-col items-stretch overflow-y-auto px-6 py-6"
+      >
+        <div className="mx-auto flex w-full max-w-2xl flex-col py-6">
+          <CurrentStep {...(stepProps as any)} />
+        </div>
       </div>
 
       {/* Footer hint */}
-      <footer className="flex h-10 items-center justify-center border-t border-border/30">
+      <footer className="flex h-10 shrink-0 items-center justify-center border-t border-border/30">
         <p className="text-[11px] text-muted-foreground/50">
           {step + 1} of {STEPS.length}
         </p>
