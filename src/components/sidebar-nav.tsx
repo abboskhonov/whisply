@@ -4,6 +4,7 @@ import {
   House,
   BookOpen,
   PaintBrush,
+  Terminal,
 } from "@phosphor-icons/react"
 import { Link, useMatchRoute } from "@tanstack/react-router"
 
@@ -49,6 +50,12 @@ const NAV_GROUPS: SidebarNavGroup[] = [
     items: [
       { label: "Snippets", to: "/snippets", icon: BookmarkSimple, tooltip: "Snippets" },
       { label: "Style", to: "/style", icon: PaintBrush, tooltip: "Style" },
+    ],
+  },
+  {
+    label: "Diagnostics",
+    items: [
+      { label: "Logs", to: "/logs", icon: Terminal, tooltip: "Event logs" },
     ],
   },
 ]

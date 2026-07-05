@@ -16,6 +16,7 @@ import { isTauri } from "@/lib/tauri"
 const ROUTE_TITLES: Record<string, string> = {
   "/": "Home",
   "/insights": "Insights",
+  "/logs": "Logs",
   "/dictionary": "Dictionary",
   "/snippets": "Snippets",
   "/style": "Style",
