@@ -1,4 +1,4 @@
-use enigo::{Enigo, Keyboard, Settings};
+use enigo::{Enigo, Settings};
 use std::sync::Mutex;
 use tauri::AppHandle;
 use tauri::Manager;
@@ -37,25 +37,13 @@ pub fn initialize_input(app: AppHandle) -> Result<(), String> {
     }
 }
 
-/// Test that enigo can actually send keys by simulating a simple modifier key.
-/// This is a more thorough check than just initialization — the display server
-/// (especially Wayland) may reject the attempt at runtime.
+/// Check whether enigo was initialized successfully (passive test —
+/// does NOT send actual keys, avoiding Wayland/GNOME security dialogs).
 #[tauri::command]
 pub fn test_input_connection(app: AppHandle) -> Result<bool, String> {
-    let state = app.state::<EnigoState>();
-    let mut enigo = state.0.lock().map_err(|e| format!("Lock error: {}", e))?;
-
-    // Try pressing and releasing the Shift key as a connectivity test
-    #[cfg(target_os = "linux")]
-    {
-        enigo
-            .key(enigo::Key::Shift, enigo::Direction::Press)
-            .map_err(|e| format!("Key press failed: {}", e))?;
-        std::thread::sleep(std::time::Duration::from_millis(30));
-        enigo
-            .key(enigo::Key::Shift, enigo::Direction::Release)
-            .map_err(|e| format!("Key release failed: {}", e))?;
-    }
-
+    let state = app
+        .try_state::<EnigoState>()
+        .ok_or_else(|| "Enigo not initialized".to_string())?;
+    let _enigo = state.0.lock().map_err(|e| format!("Lock error: {}", e))?;
     Ok(true)
 }
