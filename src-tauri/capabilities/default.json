@@ -18,6 +18,11 @@
     "core:event:allow-listen",
     "core:event:allow-emit-to",
     "opener:default",
-    "log:default"
+    "log:default",
+    "global-shortcut:default",
+    "global-shortcut:allow-register",
+    "global-shortcut:allow-unregister",
+    "global-shortcut:allow-unregister-all",
+    "global-shortcut:allow-is-registered"
   ]
 }

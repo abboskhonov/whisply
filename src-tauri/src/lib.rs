@@ -10,6 +10,7 @@ use std::sync::Arc;
 
 use tauri::webview::PageLoadEvent;
 use tauri::Listener;
+use tauri_plugin_global_shortcut::Builder as GlobalShortcutBuilder;
 use tauri_plugin_opener::OpenerExt;
 use tauri_plugin_log::{Target, TargetKind};
 
@@ -53,6 +54,7 @@ pub fn run() {
                 .build(),
         )
         .plugin(tauri_plugin_opener::init())
+        .plugin(GlobalShortcutBuilder::new().build())
         .plugin(external_navigation_plugin())
         .manage(shortcut::ShortcutRegistry::new())
         .manage(shortcut::ListenerRunning::new())
@@ -77,15 +79,12 @@ pub fn run() {
             let handle = app.handle().clone();
             overlay::ensure_window(&handle);
 
-            // Start the global keyboard listener immediately so any
-            // shortcut registered via localStorage (or the onboarding
-            // flow) is detected the moment the app boots. The listener
-            // is a no-op if no shortcuts are registered.
-            if let Err(e) = shortcut::start_shortcut_listener(handle.clone()) {
-                log::warn!("failed to start global shortcut listener: {e}");
-            } else {
-                log::info!("global shortcut listener started");
-            }
+            // The global-shortcut plugin doesn't need a manual "start" —
+            // it installs its handler at builder time and starts watching
+            // as soon as a shortcut is registered. We just log the boot
+            // so it's obvious in `tauri dev` output that the pipeline
+            // came up cleanly.
+            log::info!("global-shortcut plugin ready (registration is per-shortcut)");
 
             // Listen for the overlay's cancel button and stop capture + hide.
             // The cancel event is emitted from the overlay window with no
