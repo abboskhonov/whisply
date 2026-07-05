@@ -1,4 +1,5 @@
 mod input;
+mod shortcut;
 mod system;
 
 use tauri::webview::PageLoadEvent;
@@ -53,6 +54,8 @@ pub fn run() {
             system::get_input_status,
             input::initialize_input,
             input::test_input_connection,
+            shortcut::register_global_shortcut,
+            shortcut::unregister_global_shortcut,
         ])
         .on_page_load(|webview, payload| {
             if webview.label() == "main" && matches!(payload.event(), PageLoadEvent::Finished) {

@@ -1,3 +1,4 @@
+import * as React from "react"
 import { useLocation } from "@tanstack/react-router"
 
 import { cn } from "@/lib/utils"
@@ -7,6 +8,9 @@ import {
   SidebarTrigger,
 } from "@/components/ui/sidebar"
 import { AppSidebar } from "@/components/app-sidebar"
+import { RecordingOverlay } from "@/components/recording-overlay"
+import { useGlobalShortcut } from "@/hooks/use-global-shortcut"
+import { isTauri } from "@/lib/tauri"
 
 const ROUTE_TITLES: Record<string, string> = {
   "/": "Home",
@@ -76,21 +80,35 @@ export function Layout({
   className,
   ...providerProps
 }: LayoutProps) {
+  const { overlayState, shortcutKey } = useGlobalShortcut()
+
+  // Re-register saved shortcut on mount
+  React.useEffect(() => {
+    if (!isTauri()) return
+
+    const saved = localStorage.getItem("whisply-shortcut")
+    if (!saved) return
+
+    import("@/hooks/use-global-shortcut").then(async ({ comboToShortcutString }) => {
+      const combo = JSON.parse(saved)
+      const key = comboToShortcutString(combo)
+      const { invoke } = await import("@tauri-apps/api/core")
+      await invoke("register_global_shortcut", { shortcutKey: key })
+    })
+  }, [])
+
   return (
     <SidebarProvider
       defaultOpen={true}
       className={cn("h-svh", className)}
       {...providerProps}
     >
+      <RecordingOverlay state={overlayState} shortcutKey={shortcutKey} />
       <AppSidebar />
       <SidebarInset>
         <AppShellHeader {...(header ?? {})} />
         <div
           data-ui-scroll-container
-          // Promote page content to its own GPU layer so the sidebar's
-          // width animation only re-composites this layer on the GPU
-          // instead of re-rasterising every child (stats grid, transcript
-          // rows, etc.) on the main thread on each frame.
           className="flex min-h-0 flex-1 flex-col bg-background will-change-transform"
         >
           {children}

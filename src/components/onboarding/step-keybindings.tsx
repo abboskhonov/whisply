@@ -2,6 +2,8 @@ import * as React from "react"
 import { Keyboard, Check } from "@phosphor-icons/react"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
+import { isTauri } from "@/lib/tauri"
+import { invoke } from "@tauri-apps/api/core"
 
 type Modifier = "Super" | "Ctrl" | "Alt" | "Shift"
 
@@ -22,6 +24,16 @@ const MODIFIER_LABELS: Record<string, string> = {
   Shift: "Shift",
 }
 
+function comboToString(combo: KeyCombo): string {
+  const modMap: Record<string, string> = {
+    Super: "Super",
+    Ctrl: "Ctrl",
+    Alt: "Alt",
+    Shift: "Shift",
+  }
+  return [...combo.modifiers.map((m) => modMap[m] ?? m), combo.key].join("+")
+}
+
 type StepKeybindingsProps = {
   onNext: () => void
   onBack: () => void
@@ -31,6 +43,7 @@ export function StepKeybindings({ onNext, onBack }: StepKeybindingsProps) {
   const [combo, setCombo] = React.useState<KeyCombo>(DEFAULT_COMBO)
   const [listening, setListening] = React.useState(false)
   const [saved, setSaved] = React.useState(false)
+  const [registering, setRegistering] = React.useState(false)
 
   const handleStartListening = () => {
     setListening(true)
@@ -44,8 +57,8 @@ export function StepKeybindings({ onNext, onBack }: StepKeybindingsProps) {
       e.preventDefault()
       e.stopPropagation()
 
-      // Ignore modifier-only keydowns (e.g. pressing Ctrl alone fires
-      // a keydown with key="Control" before the actual letter arrives).
+      // Ignore modifier-only keydowns (pressing Ctrl alone fires
+      // key="Control" before the actual letter arrives).
       const MODIFIER_KEYS = new Set(["Control", "Alt", "Shift", "Meta"])
       if (MODIFIER_KEYS.has(e.key)) return
 
@@ -67,7 +80,23 @@ export function StepKeybindings({ onNext, onBack }: StepKeybindingsProps) {
     return () => window.removeEventListener("keydown", handleKeyDown)
   }, [listening])
 
-  const handleSave = () => {
+  const handleSave = async () => {
+    setRegistering(true)
+
+    // Save the combo to localStorage so the app can re-register on restart
+    localStorage.setItem("whisply-shortcut", JSON.stringify(combo))
+
+    // Register the global shortcut via Rust backend
+    if (isTauri()) {
+      const shortcutStr = comboToString(combo)
+      try {
+        await invoke("register_global_shortcut", { shortcutKey: shortcutStr })
+      } catch (err) {
+        console.warn("Failed to register shortcut:", err)
+      }
+    }
+
+    setRegistering(false)
     setSaved(true)
     onNext()
   }
@@ -122,7 +151,7 @@ export function StepKeybindings({ onNext, onBack }: StepKeybindingsProps) {
           </div>
         )}
         <p className="text-xs text-muted-foreground">
-          {listening ? "Esc to cancel" : "Click to change"}
+          {listening ? "Press a key combination…" : "Click to change"}
         </p>
       </div>
 
@@ -130,8 +159,10 @@ export function StepKeybindings({ onNext, onBack }: StepKeybindingsProps) {
         <Button variant="outline" onClick={onBack}>
           Back
         </Button>
-        <Button onClick={handleSave} disabled={listening}>
-          {saved ? (
+        <Button onClick={handleSave} disabled={listening || registering}>
+          {registering ? (
+            "Registering…"
+          ) : saved ? (
             <>
               <Check weight="bold" className="size-3.5" />
               Saved
