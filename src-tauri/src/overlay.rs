@@ -1,13 +1,24 @@
 use serde::Serialize;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Mutex;
 use tauri::{AppHandle, Emitter, Manager, WebviewUrl, WebviewWindowBuilder};
 
-const OVERLAY_LABEL: &str = "recording_overlay";
+#[cfg(target_os = "linux")]
+use gtk_layer_shell::{Edge, Layer, LayerShell};
 
-/// Cached "overlay is enabled" flag. Always true for Whisply — the overlay
-/// is the only way the user gets push-to-talk feedback when the app window
-/// isn't focused, so we keep it cheap to query from the audio path.
+const OVERLAY_LABEL: &str = "recording_overlay";
+const OVERLAY_WIDTH: f64 = 420.0;
+const OVERLAY_HEIGHT: f64 = 120.0;
+
+/// Pending overlay state to show once the webview is ready.
+static PENDING_STATE: Mutex<Option<PendingOverlay>> = Mutex::new(None);
 static OVERLAY_READY: AtomicBool = AtomicBool::new(false);
+
+struct PendingOverlay {
+    state: String,
+    device: String,
+    shortcut: String,
+}
 
 #[derive(Clone, Debug, Serialize)]
 pub struct OverlayStatePayload {
@@ -17,46 +28,170 @@ pub struct OverlayStatePayload {
     pub error: String,
 }
 
-/// Ensure the overlay webview exists. Called once at startup as a safety
-/// net — the static config in tauri.conf.json should already create it,
-/// but if the dev process started before the config was updated, this
-/// catches up. Also useful if a future user disables the window in
-/// the config without breaking the whole push-to-talk flow.
+/// Initialize GTK layer shell for the overlay window (Linux/Wayland).
+/// This makes the overlay truly topmost, which `always_on_top` alone
+/// cannot guarantee on Wayland compositors like Mutter/GNOME.
+#[cfg(target_os = "linux")]
+fn init_layer_shell(window: &tauri::WebviewWindow) {
+    let Ok(gtk_window) = window.gtk_window() else {
+        log::warn!("gtk_window() failed — layer shell not available");
+        return;
+    };
+
+    if !gtk_layer_shell::is_supported() {
+        log::debug!("gtk-layer-shell not supported by compositor");
+        return;
+    }
+
+    gtk_window.init_layer_shell();
+    gtk_window.set_layer(Layer::Overlay);
+    gtk_window.set_keyboard_mode(gtk_layer_shell::KeyboardMode::None);
+    gtk_window.set_exclusive_zone(0);
+    gtk_window.set_anchor(Edge::Top, true);
+    gtk_window.set_anchor(Edge::Left, true);
+    gtk_window.set_anchor(Edge::Right, true);
+
+    log::info!("GTK layer shell initialized for overlay (Layer::Overlay)");
+}
+
+#[cfg(not(target_os = "linux"))]
+fn init_layer_shell(_window: &tauri::WebviewWindow) {}
+
+/// Ensure the overlay webview exists. Creates it on first call.
+/// On Linux, also initialises GTK layer shell for proper Wayland
+/// always-on-top behaviour.
 pub fn ensure_window(app: &AppHandle) {
     if app.get_webview_window(OVERLAY_LABEL).is_some() {
         return;
     }
-    log::warn!(
-        "recording_overlay window missing from config — creating at runtime"
-    );
+
+    log::info!("Creating recording_overlay window at runtime");
     let url = WebviewUrl::App("overlay.html".into());
-    let _ = WebviewWindowBuilder::new(app, OVERLAY_LABEL, url)
+    let window = WebviewWindowBuilder::new(app, OVERLAY_LABEL, url)
         .title("Whisply Overlay")
-        .inner_size(420.0, 120.0)
+        .inner_size(OVERLAY_WIDTH, OVERLAY_HEIGHT)
         .decorations(false)
         .transparent(true)
         .always_on_top(true)
         .skip_taskbar(true)
         .resizable(false)
+        .focusable(false)
         .focused(false)
         .visible(false)
         .shadow(false)
         .center()
         .build();
+
+    if let Ok(ref w) = window {
+        #[cfg(target_os = "linux")]
+        init_layer_shell(w);
+        log::info!("recording_overlay window created");
+    } else if let Err(e) = window {
+        log::error!("Failed to create recording_overlay window: {e}");
+    }
 }
 
-/// Bring the overlay window up to the top of the primary monitor and show it.
-/// On Linux the compositor placement is sometimes off, so we explicitly set
-/// the position from Rust after showing — this also lets us place the
-/// overlay even when the main window is minimized.
+/// Position the overlay at the top-center of the primary monitor.
+fn position_overlay(app: &AppHandle) {
+    let Some(window) = app.get_webview_window(OVERLAY_LABEL) else {
+        return;
+    };
+
+    let monitor = match app.primary_monitor().ok().flatten() {
+        Some(m) => m,
+        None => return,
+    };
+
+    let scale = monitor.scale_factor();
+    let mon_size = monitor.size();
+    let mon_pos = monitor.position();
+
+    let win_w = (OVERLAY_WIDTH * scale) as i32;
+    let win_h = (OVERLAY_HEIGHT * scale) as i32;
+
+    let x = mon_pos.x + (mon_size.width as i32 - win_w) / 2;
+    let y = mon_pos.y + (12.0 * scale) as i32;
+
+    let _ = window.set_position(tauri::Position::Physical(tauri::PhysicalPosition { x, y }));
+    let _ = window.set_size(tauri::Size::Physical(tauri::PhysicalSize {
+        width: win_w as u32,
+        height: win_h as u32,
+    }));
+}
+
+/// Mark the overlay webview as ready. Called from `on_page_load`.
+/// If there's a pending show state, applies it immediately.
+pub fn mark_ready(app: &AppHandle) {
+    OVERLAY_READY.store(true, Ordering::SeqCst);
+    log::info!("recording_overlay webview marked ready");
+
+    // Drain any pending state that arrived before the webview was loaded.
+    let pending = PENDING_STATE.lock().ok().and_then(|mut p| p.take());
+    if let Some(p) = pending {
+        log::info!("Applying deferred overlay state: {}", p.state);
+        // Re-emit state now that the webview listener is up.
+        let _ = app.emit_to(
+            OVERLAY_LABEL,
+            "whisply://audio-state",
+            OverlayStatePayload {
+                state: match_state(&p.state),
+                device: p.device,
+                shortcut: p.shortcut,
+                error: String::new(),
+            },
+        );
+    }
+}
+
+pub fn is_ready() -> bool {
+    OVERLAY_READY.load(Ordering::SeqCst)
+}
+
+fn match_state(s: &str) -> &'static str {
+    match s {
+        "recording" => "recording",
+        "transcribing" => "transcribing",
+        "denied" => "denied",
+        _ => "idle",
+    }
+}
+
+/// Show the overlay with the given state. Emits the state event to the
+/// overlay webview and makes the window visible.
+///
+/// If the overlay webview hasn't finished loading yet, the state is
+/// stashed and applied once `mark_ready()` fires. This prevents the
+/// "shortcut pressed before overlay loaded" race.
 pub fn show(app: &AppHandle, state: &str, device: &str, shortcut: &str) {
     ensure_window(app);
     position_overlay(app);
 
+    let ready = OVERLAY_READY.load(Ordering::SeqCst);
+
+    if !ready {
+        // Stash the state for when the webview finishes loading.
+        if let Ok(mut pending) = PENDING_STATE.lock() {
+            *pending = Some(PendingOverlay {
+                state: state.to_string(),
+                device: device.to_string(),
+                shortcut: shortcut.to_string(),
+            });
+        }
+        log::info!(
+            "Overlay not ready yet — stashed state '{}' for later",
+            state
+        );
+
+        // Still show the window even if the webview isn't ready.
+        // The event will be re-emitted when mark_ready fires.
+        if let Some(window) = app.get_webview_window(OVERLAY_LABEL) {
+            let _ = window.show();
+        }
+        return;
+    }
+
     if let Some(window) = app.get_webview_window(OVERLAY_LABEL) {
         let _ = window.show();
-    } else {
-        log::error!("recording_overlay window not found even after ensure_window");
     }
 
     let _ = app.emit_to(
@@ -71,8 +206,7 @@ pub fn show(app: &AppHandle, state: &str, device: &str, shortcut: &str) {
     );
 }
 
-/// Hide the overlay window and tell its UI to reset to idle so the pill
-/// pops out cleanly next time.
+/// Hide the overlay window and reset the UI to idle.
 pub fn hide(app: &AppHandle) {
     let _ = app.emit_to(
         OVERLAY_LABEL,
@@ -117,66 +251,9 @@ pub fn emit_error(app: &AppHandle, message: &str) {
     );
 }
 
-/// Returns true if the overlay window is open and visible. Used by the
-/// shortcut handler to avoid toggling the wave when the user is mid-key.
+/// Returns true if the overlay window is visible.
 pub fn is_visible(app: &AppHandle) -> bool {
     app.get_webview_window(OVERLAY_LABEL)
         .and_then(|w| w.is_visible().ok())
         .unwrap_or(false)
-}
-
-/// Mark the overlay as ready (called once the window's webview finishes
-/// loading). Future show/hide commands become no-ops if the window is
-/// not ready, so we don't crash on a missing event target.
-pub fn mark_ready() {
-    OVERLAY_READY.store(true, Ordering::SeqCst);
-    log::info!("recording_overlay marked ready");
-}
-
-pub fn is_ready() -> bool {
-    OVERLAY_READY.load(Ordering::SeqCst)
-}
-
-fn match_state(s: &str) -> &'static str {
-    match s {
-        "recording" => "recording",
-        "transcribing" => "transcribing",
-        "denied" => "denied",
-        _ => "idle",
-    }
-}
-
-/// Place the overlay at the top-center of the primary monitor. We compute
-/// the position from the monitor's size (logical pixels) so the pill is
-/// visible regardless of which display the user is on.
-fn position_overlay(app: &AppHandle) {
-    let Some(window) = app.get_webview_window(OVERLAY_LABEL) else {
-        return;
-    };
-
-    let monitor = match app.primary_monitor().ok().flatten() {
-        Some(m) => m,
-        None => return,
-    };
-
-    let scale = monitor.scale_factor();
-    let mon_size = monitor.size();
-    let mon_pos = monitor.position();
-
-    // Window is 420x120 logical. Center horizontally, 12px from the top
-    // edge of the monitor (in physical pixels for crisp placement).
-    let win_w = (420.0 * scale) as i32;
-    let win_h = (120.0 * scale) as i32;
-
-    let x = mon_pos.x + (mon_size.width as i32 - win_w) / 2;
-    let y = mon_pos.y + (12 * scale as i32);
-
-    let _ = window.set_position(tauri::Position::Physical(tauri::PhysicalPosition {
-        x,
-        y,
-    }));
-    let _ = window.set_size(tauri::Size::Physical(tauri::PhysicalSize {
-        width: win_w as u32,
-        height: win_h as u32,
-    }));
 }

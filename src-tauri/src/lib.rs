@@ -10,6 +10,7 @@ use std::sync::Arc;
 
 use tauri::webview::PageLoadEvent;
 use tauri::Listener;
+use tauri::Manager;
 use tauri_plugin_global_shortcut::Builder as GlobalShortcutBuilder;
 use tauri_plugin_opener::OpenerExt;
 use tauri_plugin_log::{Target, TargetKind};
@@ -68,7 +69,7 @@ pub fn run() {
                 && matches!(payload.event(), PageLoadEvent::Finished)
             {
                 log::info!("recording_overlay webview finished loading");
-                overlay::mark_ready();
+                overlay::mark_ready(&webview.app_handle());
             }
         })
         .setup(|app| {
