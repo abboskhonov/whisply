@@ -110,9 +110,9 @@ export function StepOsDetection({ onNext, onBack }: StepOsDetectionProps) {
       <div className="flex items-center gap-3 rounded-xl border border-border/60 bg-muted/50 px-5 py-3">
         <LinuxLogo weight="fill" className="size-7 text-foreground" />
         <div className="text-left">
-          <p className="text-sm font-medium text-foreground">{os.os}</p>
+          <p className="text-sm font-medium text-foreground">{os?.os}</p>
           <p className="text-xs text-muted-foreground">
-            {os.kernel} · {os.desktop} · {os.audio_system}
+            {os?.kernel} · {os?.desktop} · {os?.audio_system}
           </p>
         </div>
       </div>

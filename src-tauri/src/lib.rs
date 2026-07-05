@@ -1,6 +1,9 @@
+mod audio;
 mod input;
 mod shortcut;
 mod system;
+
+use std::sync::Arc;
 
 
 
@@ -51,6 +54,7 @@ pub fn run() {
         .plugin(external_navigation_plugin())
         .manage(shortcut::ShortcutRegistry::new())
         .manage(shortcut::ListenerRunning::new())
+        .manage(Arc::new(audio::AudioState::new()))
         .invoke_handler(tauri::generate_handler![
             system::get_system_info,
             system::get_microphone_status,
@@ -63,6 +67,10 @@ pub fn run() {
             shortcut::register_shortcut_evdev,
             shortcut::unregister_shortcut_evdev,
             shortcut::unregister_all_shortcuts_evdev,
+            audio::list_microphones,
+            audio::start_audio_capture,
+            audio::stop_audio_capture,
+            audio::is_capturing,
         ])
         .on_page_load(|webview, payload| {
             if webview.label() == "main" && matches!(payload.event(), PageLoadEvent::Finished) {

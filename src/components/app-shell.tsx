@@ -1,6 +1,8 @@
 import * as React from "react"
 import { useLocation } from "@tanstack/react-router"
 
+import { invoke } from "@tauri-apps/api/core"
+
 import { cn } from "@/lib/utils"
 import {
   SidebarInset,
@@ -8,8 +10,8 @@ import {
   SidebarTrigger,
 } from "@/components/ui/sidebar"
 import { AppSidebar } from "@/components/app-sidebar"
-import { RecordingOverlay } from "@/components/recording-overlay"
-import { useGlobalShortcut } from "@/hooks/use-global-shortcut"
+import { GlobalWave } from "@/components/global-wave"
+import { useDictation, comboToShortcutString } from "@/hooks/use-dictation"
 import { isTauri } from "@/lib/tauri"
 
 const ROUTE_TITLES: Record<string, string> = {
@@ -80,7 +82,7 @@ export function Layout({
   className,
   ...providerProps
 }: LayoutProps) {
-  const { overlayState, shortcutKey } = useGlobalShortcut()
+  const { state, levels, elapsed, shortcutKey, cancel } = useDictation()
 
   // Re-register saved shortcut on mount
   React.useEffect(() => {
@@ -89,12 +91,13 @@ export function Layout({
     const saved = localStorage.getItem("whisply-shortcut")
     if (!saved) return
 
-    import("@/hooks/use-global-shortcut").then(async ({ comboToShortcutString }) => {
+    try {
       const combo = JSON.parse(saved)
       const key = comboToShortcutString(combo)
-      const { invoke } = await import("@tauri-apps/api/core")
-      await invoke("register_shortcut_evdev", { shortcutKey: key })
-    })
+      void invoke("register_shortcut_evdev", { shortcutKey: key })
+    } catch {
+      // ignore corrupt localStorage
+    }
   }, [])
 
   return (
@@ -103,7 +106,13 @@ export function Layout({
       className={cn("h-svh", className)}
       {...providerProps}
     >
-      <RecordingOverlay state={overlayState} shortcutKey={shortcutKey} />
+      <GlobalWave
+        state={state}
+        levels={levels}
+        elapsed={elapsed}
+        shortcutKey={shortcutKey}
+        onCancel={cancel}
+      />
       <AppSidebar />
       <SidebarInset>
         <AppShellHeader {...(header ?? {})} />

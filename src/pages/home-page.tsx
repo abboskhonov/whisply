@@ -9,6 +9,7 @@ import {
 import { Button } from "@/components/ui/button"
 import { PageHeader, PageShell, Section } from "@/components/page"
 import { StatCard, StatGrid } from "@/components/stats"
+import { DictationDemo } from "@/components/dictation-demo"
 import {
   TranscriptGroup,
   TranscriptRow,
@@ -64,6 +65,10 @@ export function HomePage() {
   return (
     <PageShell>
       <PageHeader title="Home" actions={null} />
+
+      <Section>
+        <DictationDemo />
+      </Section>
 
       <Section>
         <StatGrid>
