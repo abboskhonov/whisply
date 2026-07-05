@@ -43,18 +43,17 @@ pub fn initialize_input(app: AppHandle) -> Result<(), String> {
 #[tauri::command]
 pub fn test_input_connection(app: AppHandle) -> Result<bool, String> {
     let state = app.state::<EnigoState>();
-    let enigo = state.0.lock().map_err(|e| format!("Lock error: {}", e))?;
+    let mut enigo = state.0.lock().map_err(|e| format!("Lock error: {}", e))?;
 
     // Try pressing and releasing the Shift key as a connectivity test
     #[cfg(target_os = "linux")]
     {
-        use enigo::Key;
         enigo
-            .key(Key::Shift, enigo::Direction::Press)
+            .key(enigo::Key::Shift, enigo::Direction::Press)
             .map_err(|e| format!("Key press failed: {}", e))?;
         std::thread::sleep(std::time::Duration::from_millis(30));
         enigo
-            .key(Key::Shift, enigo::Direction::Release)
+            .key(enigo::Key::Shift, enigo::Direction::Release)
             .map_err(|e| format!("Key release failed: {}", e))?;
     }
 

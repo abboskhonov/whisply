@@ -1,3 +1,4 @@
+use cpal::traits::{DeviceTrait, HostTrait};
 use serde::Serialize;
 use std::process::Command;
 
@@ -106,17 +107,28 @@ pub fn check_system() -> SystemInfo {
 }
 
 pub fn check_microphone() -> MicrophoneStatus {
-    let devices = cpal::input_devices().ok();
-    let device_count = devices.as_ref().map(|d| d.count()).unwrap_or(0);
-    let default_device = devices
-        .as_ref()
-        .and_then(|mut d| d.next())
-        .and_then(|d| d.name().ok());
+    let host = cpal::default_host();
+    let devices = host.input_devices();
 
-    MicrophoneStatus {
-        available: device_count > 0,
-        device_count,
-        default_device,
+    match devices {
+        Ok(devices) => {
+            let names: Vec<String> = devices
+                .filter_map(|d| d.name().ok())
+                .collect();
+            let count = names.len();
+            let default = names.first().cloned();
+
+            MicrophoneStatus {
+                available: count > 0,
+                device_count: count,
+                default_device: default,
+            }
+        }
+        Err(_) => MicrophoneStatus {
+            available: false,
+            device_count: 0,
+            default_device: None,
+        },
     }
 }
 
