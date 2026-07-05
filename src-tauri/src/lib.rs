@@ -1,5 +1,6 @@
 mod audio;
 mod input;
+mod overlay;
 mod shortcut;
 mod system;
 
@@ -8,6 +9,7 @@ use std::sync::Arc;
 
 
 use tauri::webview::PageLoadEvent;
+use tauri::Listener;
 use tauri_plugin_opener::OpenerExt;
 use tauri_plugin_log::{Target, TargetKind};
 
@@ -55,6 +57,29 @@ pub fn run() {
         .manage(shortcut::ShortcutRegistry::new())
         .manage(shortcut::ListenerRunning::new())
         .manage(Arc::new(audio::AudioState::new()))
+        .on_page_load(|webview, payload| {
+            if webview.label() == "main" && matches!(payload.event(), PageLoadEvent::Finished) {
+                log::info!("main webview finished loading");
+                let _ = webview.window().show();
+            }
+            if webview.label() == "recording_overlay"
+                && matches!(payload.event(), PageLoadEvent::Finished)
+            {
+                log::info!("recording_overlay webview finished loading");
+                overlay::mark_ready();
+            }
+        })
+        .setup(|app| {
+            // Listen for the overlay's cancel button and stop capture + hide.
+            // The cancel event is emitted from the overlay window with no
+            // payload — the user just wants out.
+            let handle = app.handle().clone();
+            app.listen("whisply://overlay-cancel", move |_event| {
+                let _ = audio::stop_audio_capture(handle.clone());
+                overlay::hide(&handle);
+            });
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             system::get_system_info,
             system::get_microphone_status,
@@ -72,12 +97,6 @@ pub fn run() {
             audio::stop_audio_capture,
             audio::is_capturing,
         ])
-        .on_page_load(|webview, payload| {
-            if webview.label() == "main" && matches!(payload.event(), PageLoadEvent::Finished) {
-                log::info!("main webview finished loading");
-                let _ = webview.window().show();
-            }
-        })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

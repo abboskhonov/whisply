@@ -21,16 +21,15 @@ type DictationDemoProps = {
  * the button or holding the shortcut produce identical state on screen.
  */
 export function DictationDemo({ className }: DictationDemoProps) {
-  const { state, levels, elapsed, error, shortcutKey, start, stop, cancel } =
-    useDictation({
-      onSamples: (samples) => {
-        setSampleBuffer((prev) => {
-          const next = prev.concat(samples)
-          // Cap to ~3 seconds of demo history at 48 kHz
-          return next.length > 48_000 * 3 ? next.slice(-48_000 * 2) : next
-        })
-      },
-    })
+  const { state, elapsed, error, shortcutKey, start, stop } = useDictation({
+    onSamples: (samples) => {
+      setSampleBuffer((prev) => {
+        const next = prev.concat(samples)
+        // Cap to ~3 seconds of demo history at 48 kHz
+        return next.length > 48_000 * 3 ? next.slice(-48_000 * 2) : next
+      })
+    },
+  })
 
   const [sampleBuffer, setSampleBuffer] = React.useState<number[]>([])
   const [mockTranscript, setMockTranscript] = React.useState<string[]>([])
@@ -81,7 +80,7 @@ export function DictationDemo({ className }: DictationDemoProps) {
       {/* Live waveform + controls */}
       <div className="flex flex-col gap-3 rounded-lg border border-border/40 bg-background/60 p-4">
         <DemoWaveform
-          levels={levels.length > 0 ? levels : FALLBACK}
+          levels={FALLBACK}
           state={state}
           sampleBuffer={sampleBuffer}
         />
@@ -99,9 +98,9 @@ export function DictationDemo({ className }: DictationDemoProps) {
                 Stop
               </Button>
             ) : state === "transcribing" ? (
-              <Button size="sm" variant="outline" onClick={() => void cancel()}>
+              <Button size="sm" variant="outline" disabled>
                 <ArrowsClockwise weight="bold" className="size-3.5" />
-                Cancel
+                Working…
               </Button>
             ) : (
               <PushToTalkButton

@@ -1,0 +1,318 @@
+/*
+  Styles for the global recording overlay (rendered in its own transparent
+  Tauri window). Keep this file self-contained — the main app's index.css
+  sets a body background and overflow rules that would break the overlay's
+  transparent window.
+*/
+
+:root {
+  --ov-accent: #e5484d;        /* red-500 */
+  --ov-accent-soft: rgba(229, 72, 77, 0.18);
+  --ov-amber: #f5a524;         /* amber-500 */
+  --ov-amber-soft: rgba(245, 165, 36, 0.18);
+  --ov-surface: rgba(20, 20, 24, 0.78);
+  --ov-surface-edge: rgba(255, 255, 255, 0.06);
+  --ov-text: rgba(255, 255, 255, 0.92);
+  --ov-text-muted: rgba(255, 255, 255, 0.55);
+  --ov-text-faint: rgba(255, 255, 255, 0.40);
+  --ov-ease: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@media (prefers-color-scheme: light) {
+  :root {
+    --ov-surface: rgba(255, 255, 255, 0.86);
+    --ov-surface-edge: rgba(0, 0, 0, 0.06);
+    --ov-text: rgba(20, 20, 24, 0.92);
+    --ov-text-muted: rgba(20, 20, 24, 0.55);
+    --ov-text-faint: rgba(20, 20, 24, 0.40);
+  }
+}
+
+* { box-sizing: border-box; }
+
+html, body, #root {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  background: transparent;
+}
+
+body {
+  font-family: 'Inter Variable', system-ui, -apple-system, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-feature-settings: "cv11", "ss01", "tnum";
+  user-select: none;
+  color: var(--ov-text);
+  overflow: hidden;
+}
+
+/* The stage takes the full window. The pill is anchored at top-center and
+   floats in with a quick scale + fade. */
+.ov-stage {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding-top: 12px;
+  background: transparent;
+  pointer-events: none;
+}
+
+.ov-pill {
+  pointer-events: auto;
+  background: var(--ov-surface);
+  border: 1px solid var(--ov-surface-edge);
+  border-radius: 999px;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.04) inset,
+    0 12px 32px -8px rgba(0, 0, 0, 0.45),
+    0 2px 6px -1px rgba(0, 0, 0, 0.30);
+  backdrop-filter: blur(20px) saturate(140%);
+  -webkit-backdrop-filter: blur(20px) saturate(140%);
+  transform-origin: top center;
+  transition:
+    transform 240ms var(--ov-ease),
+    opacity 200ms var(--ov-ease);
+}
+
+.ov-pill.is-closed {
+  transform: translateY(-6px) scale(0.96);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.ov-pill.is-open {
+  transform: translateY(0) scale(1);
+  opacity: 1;
+  animation: ov-pop 280ms var(--ov-ease);
+}
+
+.ov-pill[data-state="transcribing"] {
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.04) inset,
+    0 12px 32px -8px var(--ov-amber-soft),
+    0 2px 6px -1px rgba(0, 0, 0, 0.30);
+}
+
+.ov-pill[data-state="denied"] {
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.04) inset,
+    0 12px 32px -8px rgba(229, 72, 77, 0.35),
+    0 2px 6px -1px rgba(0, 0, 0, 0.30);
+}
+
+@keyframes ov-pop {
+  from { transform: translateY(-4px) scale(0.94); opacity: 0; }
+  to   { transform: translateY(0)    scale(1);    opacity: 1; }
+}
+
+.ov-pill-inner {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 10px 8px 14px;
+  min-width: 280px;
+}
+
+.ov-left, .ov-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ov-right { padding-right: 4px; }
+
+.ov-center {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+}
+
+/* === Status indicators === */
+
+.ov-dot-wrap {
+  position: relative;
+  width: 16px;
+  height: 16px;
+  display: grid;
+  place-items: center;
+}
+
+.ov-dot {
+  position: relative;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--ov-accent);
+  box-shadow: 0 0 0 0 var(--ov-accent-soft);
+}
+
+.ov-dot-ping {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: var(--ov-accent);
+  opacity: 0.6;
+  animation: ov-ping 1.6s cubic-bezier(0, 0, 0.2, 1) infinite;
+}
+
+@keyframes ov-ping {
+  0%   { transform: scale(0.7); opacity: 0.6; }
+  80%, 100% { transform: scale(2.2); opacity: 0; }
+}
+
+.ov-spinner {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid var(--ov-text-faint);
+  border-top-color: var(--ov-amber);
+  animation: ov-spin 0.7s linear infinite;
+}
+
+@keyframes ov-spin {
+  to { transform: rotate(1turn); }
+}
+
+.ov-warn {
+  width: 16px;
+  height: 16px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--ov-accent);
+  color: white;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+/* === Waveform === */
+
+.ov-bars {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  height: 24px;
+}
+
+.ov-bar {
+  width: 3px;
+  border-radius: 999px;
+  background: var(--ov-text-faint);
+  transition: height 80ms linear, background-color 200ms var(--ov-ease);
+}
+
+.ov-bar.is-active {
+  background: var(--ov-accent);
+  box-shadow: 0 0 8px rgba(229, 72, 77, 0.6);
+}
+
+[data-state="transcribing"] .ov-bar.is-active {
+  background: var(--ov-amber);
+  box-shadow: 0 0 8px rgba(245, 165, 36, 0.5);
+}
+
+/* === Text === */
+
+.ov-label {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  white-space: nowrap;
+}
+
+.ov-status {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--ov-text);
+  letter-spacing: -0.005em;
+}
+
+.ov-status-err { color: var(--ov-accent); }
+
+.ov-time {
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--ov-text-muted);
+  letter-spacing: 0.01em;
+}
+
+.ov-kbd {
+  font-size: 10px;
+  font-weight: 500;
+  padding: 2px 6px;
+  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: var(--ov-text-muted);
+  font-family: 'Inter Variable', system-ui, sans-serif;
+}
+
+@media (prefers-color-scheme: light) {
+  .ov-kbd {
+    background: rgba(0, 0, 0, 0.05);
+    border-color: rgba(0, 0, 0, 0.08);
+  }
+}
+
+/* === Cancel button === */
+
+.ov-x {
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--ov-text-muted);
+  cursor: pointer;
+  padding: 0;
+  transition:
+    background-color 150ms var(--ov-ease),
+    color 150ms var(--ov-ease),
+    transform 100ms var(--ov-ease);
+}
+
+.ov-x svg {
+  width: 10px;
+  height: 10px;
+  display: block;
+}
+
+.ov-x:hover {
+  background: rgba(255, 255, 255, 0.12);
+  color: var(--ov-text);
+  transform: scale(1.06);
+}
+
+.ov-x:active {
+  transform: scale(0.94);
+}
+
+@media (prefers-color-scheme: light) {
+  .ov-x {
+    background: rgba(0, 0, 0, 0.05);
+  }
+  .ov-x:hover {
+    background: rgba(0, 0, 0, 0.10);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ov-pill,
+  .ov-bar,
+  .ov-dot,
+  .ov-dot-ping,
+  .ov-spinner,
+  .ov-x {
+    animation: none !important;
+    transition: none !important;
+  }
+}

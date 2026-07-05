@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Whisply Overlay</title>
+    <style>
+      /*
+        Reset the document to be transparent and ignore pointer events except
+        inside the pill. The Tauri window is a tiny strip at the top of the
+        screen; anything not in the pill should pass clicks through to the
+        app underneath.
+      */
+      html, body, #root {
+        margin: 0;
+        padding: 0;
+        width: 100%;
+        height: 100%;
+        background: transparent;
+        overflow: hidden;
+      }
+      body {
+        font-family: 'Inter Variable', system-ui, -apple-system, sans-serif;
+        -webkit-font-smoothing: antialiased;
+        user-select: none;
+        cursor: default;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/overlay/main.tsx"></script>
+  </body>
+</html>

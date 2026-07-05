@@ -503,7 +503,12 @@ export function StepPermissions({ onNext, onBack }: StepPermissionsProps) {
         </div>
       ) : null}
 
-      <div className="flex items-center justify-between border-t border-border/40 pt-4">
+      {/*
+        Sticky action row. Always reachable, even if the permission list
+        pushes the page past the viewport on small windows. The gradient
+        mask + border-t hint that the content scrolls behind it.
+      */}
+      <div className="sticky bottom-0 -mx-6 mt-2 flex items-center justify-between border-t border-border/60 bg-background/85 px-6 py-3 backdrop-blur supports-[backdrop-filter]:bg-background/70">
         <Button variant="ghost" onClick={onBack}>
           Back
         </Button>

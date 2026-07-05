@@ -10,7 +10,6 @@ import {
   SidebarTrigger,
 } from "@/components/ui/sidebar"
 import { AppSidebar } from "@/components/app-sidebar"
-import { GlobalWave } from "@/components/global-wave"
 import { useDictation, comboToShortcutString } from "@/hooks/use-dictation"
 import { isTauri } from "@/lib/tauri"
 
@@ -82,7 +81,10 @@ export function Layout({
   className,
   ...providerProps
 }: LayoutProps) {
-  const { state, levels, elapsed, shortcutKey, cancel } = useDictation()
+  // The hook is currently a passive observer; we still call it so the
+  // shortcut is re-registered on mount and the state is tracked in case
+  // a future consumer wants to display an in-app status pill.
+  useDictation()
 
   // Re-register saved shortcut on mount
   React.useEffect(() => {
@@ -106,13 +108,6 @@ export function Layout({
       className={cn("h-svh", className)}
       {...providerProps}
     >
-      <GlobalWave
-        state={state}
-        levels={levels}
-        elapsed={elapsed}
-        shortcutKey={shortcutKey}
-        onCancel={cancel}
-      />
       <AppSidebar />
       <SidebarInset>
         <AppShellHeader {...(header ?? {})} />

@@ -3,6 +3,52 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use tauri::{AppHandle, Emitter, Manager};
 
+// Local helpers that route the shortcut lifecycle through audio + overlay.
+// We keep them as free functions so the listener closure can borrow the
+// AppHandle without juggling more captures.
+fn drive_press(app: &AppHandle, shortcut: &RegisteredShortcut) {
+    // 1. Start audio capture (cpal). The global overlay reads this to
+    //    drive the live waveform.
+    if let Err(e) = crate::audio::start_audio_capture(app.clone(), None) {
+        log::warn!("start_audio_capture failed: {e}");
+        crate::overlay::emit_error(app, &e);
+        return;
+    }
+    // 2. Show the overlay window with the active shortcut on the pill.
+    crate::overlay::show(app, "recording", "", &shortcut.key_str);
+    // 3. Notify the main app so its UI can update too.
+    let _ = app.emit(
+        "whisply://shortcut",
+        serde_json::json!({
+            "key": shortcut.key_str,
+            "state": "pressed",
+        }),
+    );
+}
+
+fn drive_release(app: &AppHandle, shortcut: &RegisteredShortcut) {
+    // 1. Stop capture.
+    let _ = crate::audio::stop_audio_capture(app.clone());
+    // 2. Switch the overlay to the transcribing state, then hide it
+    //    after a short beat so the user sees the spinner before the
+    //    pill pops out.
+    crate::overlay::set_state(app, "transcribing", None);
+    let app_for_timer = app.clone();
+    let key_str = shortcut.key_str.clone();
+    std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_millis(1400));
+        crate::overlay::hide(&app_for_timer);
+    });
+    // 3. Notify the main app.
+    let _ = app.emit(
+        "whisply://shortcut",
+        serde_json::json!({
+            "key": key_str,
+            "state": "released",
+        }),
+    );
+}
+
 // ── Models ──────────────────────────────────────────────────────────────────
 
 #[derive(Clone, Debug)]
@@ -153,13 +199,7 @@ pub fn start_shortcut_listener(app: AppHandle) -> Result<(), String> {
                     if let Ok(guard) = registry.lock() {
                         for shortcut in guard.iter() {
                             if key == shortcut.key && mods_match(&mods, &shortcut.modifiers) {
-                                let _ = app_clone.emit(
-                                    "whisply://shortcut",
-                                    serde_json::json!({
-                                        "key": shortcut.key_str,
-                                        "state": "pressed",
-                                    }),
-                                );
+                                drive_press(&app_clone, shortcut);
                             }
                         }
                     }
@@ -173,13 +213,7 @@ pub fn start_shortcut_listener(app: AppHandle) -> Result<(), String> {
                     if let Ok(guard) = registry.lock() {
                         for shortcut in guard.iter() {
                             if key == shortcut.key {
-                                let _ = app_clone.emit(
-                                    "whisply://shortcut",
-                                    serde_json::json!({
-                                        "key": shortcut.key_str,
-                                        "state": "released",
-                                    }),
-                                );
+                                drive_release(&app_clone, shortcut);
                             }
                         }
                     }

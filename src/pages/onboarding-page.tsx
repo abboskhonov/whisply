@@ -82,7 +82,12 @@ export function OnboardingPage() {
   }, [step, handleNext, handleBack, handleFinish])
 
   return (
-    <div className="flex min-h-svh flex-col bg-background">
+    /*
+      The body has overflow:hidden + height:100% hard-coded, so the page
+      itself can't scroll. Lock the page to the viewport and let the inner
+      content column own the scroll.
+    */
+    <div className="flex h-svh flex-col overflow-hidden bg-background">
       {/* Top bar */}
       <header className="flex h-14 shrink-0 items-center justify-between border-b border-border/40 px-6">
         <div className="flex items-center gap-2">
@@ -93,16 +98,16 @@ export function OnboardingPage() {
       </header>
 
       {/*
-        Content. min-h-0 + overflow-y-auto so the step can grow taller than
-        the viewport (3 permission groups + the action footer) and the user
-        can still scroll to the Continue button. items-start so overflowing
-        content doesn't get clipped against the bottom edge.
+        Scrollable content. h-0 + min-h-0 + grow-1 is the incantation that
+        makes overflow-y work inside a fixed-height flex column — flex-1
+        alone lets the child be pushed taller than the parent by its
+        content, which swallows the overflow.
       */}
       <div
         data-ui-scroll-container
-        className="flex min-h-0 flex-1 flex-col items-stretch overflow-y-auto px-6 py-6"
+        className="flex min-h-0 grow basis-0 flex-col items-stretch overflow-y-auto overscroll-contain px-6 py-4"
       >
-        <div className="mx-auto flex w-full max-w-2xl flex-col py-6">
+        <div className="mx-auto flex w-full max-w-2xl flex-col pb-6 pt-2">
           <CurrentStep {...(stepProps as any)} />
         </div>
       </div>

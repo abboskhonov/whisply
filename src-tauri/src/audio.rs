@@ -92,6 +92,17 @@ fn emit_error(app: &AppHandle, kind: &str, message: &str) {
             message: message.to_string(),
         },
     );
+    // Mirror the error to the overlay so its UI can show a denied state.
+    let _ = app.emit_to(
+        "recording_overlay",
+        "whisply://audio-state",
+        crate::overlay::OverlayStatePayload {
+            state: "denied",
+            device: String::new(),
+            shortcut: String::new(),
+            error: message.to_string(),
+        },
+    );
 }
 
 fn list_input_devices() -> Vec<DeviceInfo> {
@@ -213,6 +224,18 @@ pub fn start_audio_capture(app: AppHandle, device_name: Option<String>) -> Resul
     state.sample_buffer.lock().unwrap().clear();
 
     let _ = app.emit("whisply://audio-started", started.clone());
+    // Tell the overlay window we're recording. The main app listens for
+    // `audio-started` separately if it needs the same info.
+    let _ = app.emit_to(
+        "recording_overlay",
+        "whisply://audio-state",
+        crate::overlay::OverlayStatePayload {
+            state: "recording",
+            device: device_label.clone(),
+            shortcut: String::new(),
+            error: String::new(),
+        },
+    );
     Ok(started)
 }
 
@@ -234,6 +257,19 @@ pub fn stop_audio_capture(app: AppHandle) -> Result<AudioStopped, String> {
         reason: "user".into(),
     };
     let _ = app.emit("whisply://audio-stopped", &stopped);
+    // Signal the overlay to switch to the transcribing state. The actual
+    // hide() happens a beat later from the shortcut handler (or whoever
+    // decides the transcribing window is over).
+    let _ = app.emit_to(
+        "recording_overlay",
+        "whisply://audio-state",
+        crate::overlay::OverlayStatePayload {
+            state: "transcribing",
+            device: String::new(),
+            shortcut: String::new(),
+            error: String::new(),
+        },
+    );
     Ok(stopped)
 }
 
@@ -323,6 +359,9 @@ where
 
         // 3) Smooth + emit at LEVEL_EMIT_HZ. We mutate shared state in a tight
         //    lock window so the frontend never sees a half-updated array.
+        //    Mic levels are routed ONLY to the overlay window — the main app
+        //    doesn't need them and avoiding a broadcast cuts the per-callback
+        //    IPC work in half.
         let now = Instant::now();
         let mut last = last_level_emit.lock().unwrap();
         if now.duration_since(*last) >= level_interval {
@@ -332,7 +371,8 @@ where
                 smoothed[i] = smoothed[i] * 0.55 + l * 0.45;
             }
             let seq = state.level_seq.fetch_add(1, Ordering::Relaxed);
-            let _ = app.emit(
+            let _ = app.emit_to(
+                "recording_overlay",
                 "whisply://mic-level",
                 LevelEvent {
                     seq,
@@ -341,9 +381,9 @@ where
             );
         }
 
-        // 4) Flush accumulated samples to the frontend at SAMPLE_EMIT_HZ. The
-        //    frontend uses this for the visual waveform demo; we don't ship
-        //    the whole stream.
+        // 4) Flush accumulated samples to the main app at SAMPLE_EMIT_HZ.
+        //    The main app uses this for the visual waveform demo in the
+        //    onboarding / home pages. We don't ship the whole stream.
         let now = Instant::now();
         let mut last = last_sample_emit.lock().unwrap();
         if now.duration_since(*last) >= sample_interval {
@@ -356,7 +396,8 @@ where
                 let take = buf.len().min(32_000);
                 let payload: Vec<f32> = buf.drain(..take).collect();
                 let seq = state.sample_seq.fetch_add(1, Ordering::Relaxed);
-                let _ = app.emit(
+                let _ = app.emit_to(
+                    "main",
                     "whisply://audio-data",
                     SamplesEvent {
                         seq,
