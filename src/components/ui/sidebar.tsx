@@ -231,23 +231,26 @@ function Sidebar({
         data-side={side}
         className={cn(
           "fixed inset-y-0 z-10 hidden h-svh w-(--sidebar-width) data-[side=left]:left-0 data-[side=right]:right-0 md:flex",
-          // GPU-accelerated transform transition for sidebar & icon collapse
-          // (replaces left/right/width animations which cause layout reflow on WebKitGTK)
-          variant !== "floating" && variant !== "inset"
+          // All transitions always active; only the relevant property changes per mode:
+          //   - Offcanvas: translateX changes (GPU composited, no layout)
+          //   - Icon: width changes (content reflows, icons stay at left edge)
+          variant === "sidebar"
             ? cn(
-                "transition-transform duration-200 ease-linear backface-hidden will-change-transform",
-                // Offcanvas: slide entire sidebar off-screen
+                "backface-hidden",
+                // Offcanvas: slide entire sidebar off-screen with GPU transform
                 "data-[side=left]:group-data-[collapsible=offcanvas]:-translate-x-full",
                 "data-[side=right]:group-data-[collapsible=offcanvas]:translate-x-full",
-                // Icon: slide so only icon strip is visible (full width kept, just shifted)
-                "group-data-[collapsible=icon]:-translate-x-[calc(var(--sidebar-width)-var(--sidebar-width-icon))]",
-                "data-[side=right]:group-data-[collapsible=icon]:translate-x-[calc(var(--sidebar-width)-var(--sidebar-width-icon))]",
+                // Icon: shrink width so content reflows and icons stay visible
+                "group-data-[collapsible=icon]:w-(--sidebar-width-icon)",
+                // Always transition both; only the one that changes will animate
+                "transition-[width,transform] duration-200 ease-linear",
+                "group-data-[side=left]:border-r group-data-[side=right]:border-l",
               )
             : "",
-          // Adjust the padding for floating and inset variants.
+          // Floating and inset variants: width transition only
           variant === "floating" || variant === "inset"
             ? "p-2 group-data-[collapsible=icon]:w-[calc(var(--sidebar-width-icon)+(--spacing(4))+2px)] transition-[width] duration-200 ease-linear"
-            : "group-data-[side=left]:border-r group-data-[side=right]:border-l",
+            : "",
           className
         )}
         {...props}
