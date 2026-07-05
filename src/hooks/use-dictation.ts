@@ -78,7 +78,11 @@ export function useDictation(options: UseDictationOptions = {}) {
         const combo = JSON.parse(saved) as ShortcutConfig
         const key = comboToShortcutString(combo)
         setShortcutKey(key)
-        void invoke("register_shortcut_evdev", { shortcutKey: key })
+        invoke("register_shortcut_evdev", { shortcutKey: key }).catch(
+          (err) => {
+            console.error("register_shortcut_evdev failed:", err)
+          }
+        )
       } catch {
         // ignore corrupt localStorage
       }

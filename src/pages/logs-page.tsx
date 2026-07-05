@@ -202,6 +202,14 @@ export function LogsPage() {
         push("warn", "overlay", "cancel button pressed")
       })
       unsubs.push(u7)
+
+      const u8 = await listen<{ shortcut: string }>(
+        "whisply://shortcut-registered",
+        (e) => {
+          push("ok", "shortcut", `registered: ${e.payload.shortcut}`)
+        }
+      )
+      unsubs.push(u8)
     })()
 
     return () => {

@@ -119,23 +119,66 @@ fn parse_shortcut(s: &str) -> Result<(rdev::Key, ModifierMask), String> {
 
 fn str_to_rdev_key(s: &str) -> Result<rdev::Key, String> {
     use rdev::Key::*;
+    // All keys rdev knows about, in the same canonical order they appear
+    // in the crate's Key enum. We accept both the lowercase single-char
+    // form (from the UI recorder) and the human-friendly name so users
+    // can configure either.
     Ok(match s.to_lowercase().as_str() {
+        // Letters
         "a" => KeyA, "b" => KeyB, "c" => KeyC, "d" => KeyD, "e" => KeyE,
         "f" => KeyF, "g" => KeyG, "h" => KeyH, "i" => KeyI, "j" => KeyJ,
         "k" => KeyK, "l" => KeyL, "m" => KeyM, "n" => KeyN, "o" => KeyO,
         "p" => KeyP, "q" => KeyQ, "r" => KeyR, "s" => KeyS, "t" => KeyT,
         "u" => KeyU, "v" => KeyV, "w" => KeyW, "x" => KeyX, "y" => KeyY, "z" => KeyZ,
+        // Top-row digits
         "0" => Num0, "1" => Num1, "2" => Num2, "3" => Num3, "4" => Num4,
         "5" => Num5, "6" => Num6, "7" => Num7, "8" => Num8, "9" => Num9,
+        // Whitespace + editing
         "space" => Space,
         "enter" | "return" => Return,
         "tab" => Tab,
         "escape" | "esc" => Escape,
         "backspace" => Backspace,
-        "delete" => Delete,
-        "up" => UpArrow, "down" => DownArrow, "left" => LeftArrow, "right" => RightArrow,
+        "delete" | "del" => Delete,
+        "insert" | "ins" => Insert,
+        // Navigation
+        "up" | "arrowup" => UpArrow, "down" | "arrowdown" => DownArrow,
+        "left" | "arrowleft" => LeftArrow, "right" | "arrowright" => RightArrow,
+        "home" => Home, "end" => End,
+        "pageup" | "pgup" => PageUp, "pagedown" | "pgdn" => PageDown,
+        // Locks + system
+        "capslock" | "caps" => CapsLock,
+        "numlock" => NumLock,
+        "scrolllock" | "scroll" => ScrollLock,
+        "printscreen" | "prtsc" => PrintScreen,
+        "pause" => Pause,
+        // Function keys
         "f1" => F1, "f2" => F2, "f3" => F3, "f4" => F4, "f5" => F5,
         "f6" => F6, "f7" => F7, "f8" => F8, "f9" => F9, "f10" => F10, "f11" => F11, "f12" => F12,
+        // Punctuation. Both the literal character (what the browser sends
+        // via e.key when the user types it) and a friendlier name.
+        "," | "comma" => Comma,
+        "." | "period" | "dot" => Dot,
+        "/" | "slash" => Slash,
+        ";" | "semicolon" => SemiColon,
+        "'" | "quote" | "apostrophe" => Quote,
+        "[" | "leftbracket" | "openbracket" => LeftBracket,
+        "]" | "rightbracket" | "closebracket" => RightBracket,
+        "\\" | "backslash" => BackSlash,
+        "-" | "minus" | "dash" => Minus,
+        "=" | "equal" | "equals" => Equal,
+        "`" | "backquote" | "backtick" | "grave" => BackQuote,
+        // Numpad
+        "kp0" | "kp_0" => Kp0, "kp1" | "kp_1" => Kp1, "kp2" | "kp_2" => Kp2,
+        "kp3" | "kp_3" => Kp3, "kp4" | "kp_4" => Kp4, "kp5" | "kp_5" => Kp5,
+        "kp6" | "kp_6" => Kp6, "kp7" | "kp_7" => Kp7, "kp8" | "kp_8" => Kp8,
+        "kp9" | "kp_9" => Kp9,
+        "kpdelete" | "kp_delete" | "kpdecimal" | "kp_dot" => KpDelete,
+        "kpenter" | "kp_enter" => KpReturn,
+        "kpplus" | "kp_plus" => KpPlus,
+        "kpminus" | "kp_minus" => KpMinus,
+        "kpmultiply" | "kp_multiply" => KpMultiply,
+        "kpdivide" | "kp_divide" => KpDivide,
         other => return Err(format!("Unknown key: '{}'", other)),
     })
 }
@@ -234,7 +277,10 @@ pub fn start_shortcut_listener(app: AppHandle) -> Result<(), String> {
 /// Register a new shortcut to listen for. Format: "Ctrl+B", "Super+V", etc.
 #[tauri::command]
 pub fn register_shortcut_evdev(app: AppHandle, shortcut_key: String) -> Result<(), String> {
-    let (key, mask) = parse_shortcut(&shortcut_key)?;
+    let (key, mask) = parse_shortcut(&shortcut_key).map_err(|e| {
+        log::warn!("register_shortcut_evdev parse failed: {e}");
+        e
+    })?;
 
     let registry = app.state::<ShortcutRegistry>().0.clone();
     let mut guard = registry.lock().map_err(|e| e.to_string())?;
@@ -246,6 +292,12 @@ pub fn register_shortcut_evdev(app: AppHandle, shortcut_key: String) -> Result<(
     });
 
     log::info!("Registered shortcut: {}", shortcut_key);
+    // Mirror the registration to the main app so the Logs page can show it
+    // alongside the live event stream.
+    let _ = app.emit(
+        "whisply://shortcut-registered",
+        serde_json::json!({ "shortcut": shortcut_key }),
+    );
     Ok(())
 }
 
