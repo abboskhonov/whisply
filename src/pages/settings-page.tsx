@@ -8,6 +8,7 @@ import {
   Palette,
   Sliders,
 } from "@phosphor-icons/react"
+import { useNavigate } from "@tanstack/react-router"
 
 import {
   List,
@@ -69,6 +70,8 @@ const SETTINGS_CATEGORIES = [
 ]
 
 export function SettingsPage() {
+  const navigate = useNavigate()
+
   return (
     <PageShell>
       <PageHeader
@@ -81,7 +84,10 @@ export function SettingsPage() {
             const Icon = cat.icon
             return (
               <ListItem key={cat.id}>
-                <ListRow>
+                <ListRow
+                  className="cursor-pointer"
+                  onClick={() => navigate({ to: `/settings/${cat.id}` })}
+                >
                   <ListLeading
                     icon={<Icon weight="regular" className="size-4" />}
                   />

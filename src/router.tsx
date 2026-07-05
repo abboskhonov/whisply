@@ -10,14 +10,35 @@ import { Route as insightsRoute } from "@/routes/insights"
 import { Route as settingsRoute } from "@/routes/settings"
 import { Route as snippetsRoute } from "@/routes/snippets"
 import { Route as styleRoute } from "@/routes/style"
+import { Route as onboardingRoute } from "@/routes/onboarding"
+
+// Settings sub-routes
+import { Route as settingsIndexRoute } from "@/routes/settings/index"
+import { Route as settingsGeneralRoute } from "@/routes/settings/general"
+import { Route as settingsDictationRoute } from "@/routes/settings/dictation"
+import { Route as settingsShortcutRoute } from "@/routes/settings/shortcut"
+import { Route as settingsTextInsertionRoute } from "@/routes/settings/text-insertion"
+import { Route as settingsAppearanceRoute } from "@/routes/settings/appearance"
+import { Route as settingsAdvancedRoute } from "@/routes/settings/advanced"
+import { Route as settingsAboutRoute } from "@/routes/settings/about"
 
 const routeTree = rootRoute.addChildren([
   indexRoute,
+  onboardingRoute,
   insightsRoute,
   dictionaryRoute,
   snippetsRoute,
   styleRoute,
-  settingsRoute,
+  settingsRoute.addChildren([
+    settingsIndexRoute,
+    settingsGeneralRoute,
+    settingsDictationRoute,
+    settingsShortcutRoute,
+    settingsTextInsertionRoute,
+    settingsAppearanceRoute,
+    settingsAdvancedRoute,
+    settingsAboutRoute,
+  ]),
 ])
 
 export const router = createRouter({
