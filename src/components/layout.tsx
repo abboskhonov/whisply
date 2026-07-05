@@ -313,7 +313,11 @@ export function Layout({ children, header, className, ...providerProps }: Layout
         <AppShellHeader {...(header ?? {})} />
         <div
           data-ui-scroll-container
-          className="flex min-h-0 flex-1 flex-col bg-background"
+          // Promote page content to its own GPU layer so the sidebar's
+          // width animation only re-composites this layer on the GPU
+          // instead of re-rasterising every child (stats grid, transcript
+          // rows, etc.) on the main thread on each frame.
+          className="flex min-h-0 flex-1 flex-col bg-background will-change-transform"
         >
           {children}
         </div>
