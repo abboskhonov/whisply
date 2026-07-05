@@ -70,6 +70,20 @@ export function useDictation(options: UseDictationOptions = {}) {
     const unsubs: Array<() => void> = []
     let mounted = true
 
+    // Re-register any persisted shortcut so the rdev listener picks it
+    // up on app start (the listener is already running in Rust setup).
+    const saved = localStorage.getItem("whisply-shortcut")
+    if (saved) {
+      try {
+        const combo = JSON.parse(saved) as ShortcutConfig
+        const key = comboToShortcutString(combo)
+        setShortcutKey(key)
+        void invoke("register_shortcut_evdev", { shortcutKey: key })
+      } catch {
+        // ignore corrupt localStorage
+      }
+    }
+
     ;(async () => {
       const u1 = await listen<{
         state: DictationState

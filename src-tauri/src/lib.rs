@@ -77,6 +77,16 @@ pub fn run() {
             let handle = app.handle().clone();
             overlay::ensure_window(&handle);
 
+            // Start the global keyboard listener immediately so any
+            // shortcut registered via localStorage (or the onboarding
+            // flow) is detected the moment the app boots. The listener
+            // is a no-op if no shortcuts are registered.
+            if let Err(e) = shortcut::start_shortcut_listener(handle.clone()) {
+                log::warn!("failed to start global shortcut listener: {e}");
+            } else {
+                log::info!("global shortcut listener started");
+            }
+
             // Listen for the overlay's cancel button and stop capture + hide.
             // The cancel event is emitted from the overlay window with no
             // payload — the user just wants out.
