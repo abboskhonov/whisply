@@ -49,6 +49,7 @@ export function LogsPage() {
   const [filter, setFilter] = React.useState<"all" | LogLevel>("all")
   const [paused, setPaused] = React.useState(false)
   const [shortcutKey, setShortcutKey] = React.useState<string>("")
+  const [triggerMode, setTriggerMode] = React.useState<string>("hold")
   const [micActive, setMicActive] = React.useState(false)
   const [latestLevels, setLatestLevels] = React.useState<number[]>(
     new Array(16).fill(0)
@@ -106,7 +107,9 @@ export function LogsPage() {
         }
         const key = [...combo.modifiers.map((m) => modMap[m] ?? m), combo.key].join("+")
         setShortcutKey(key)
-        push("ok", "boot", `Persisted shortcut loaded: ${key}`)
+        const mode = localStorage.getItem("whisply-trigger-mode") || "hold"
+        setTriggerMode(mode)
+        push("ok", "boot", `Persisted shortcut loaded: ${key} (mode: ${mode})`)
       } catch {
         push("warn", "boot", "Persisted shortcut is corrupt; ignoring")
       }
@@ -203,10 +206,12 @@ export function LogsPage() {
       })
       unsubs.push(u7)
 
-      const u8 = await listen<{ shortcut: string }>(
+      const u8 = await listen<{ shortcut: string; mode?: string }>(
         "whisply://shortcut-registered",
         (e) => {
-          push("ok", "shortcut", `registered: ${e.payload.shortcut}`)
+          const mode = e.payload.mode ? ` (${e.payload.mode})` : ""
+          push("ok", "shortcut", `registered: ${e.payload.shortcut}${mode}`)
+          if (e.payload.mode) setTriggerMode(e.payload.mode)
         }
       )
       unsubs.push(u8)
@@ -329,7 +334,7 @@ export function LogsPage() {
         <div className="grid gap-3 sm:grid-cols-3">
           <StatusTile
             label="Registered shortcut"
-            value={shortcutKey || "—"}
+            value={shortcutKey ? `${shortcutKey} · ${triggerMode}` : "—"}
             tone={shortcutKey ? "default" : "muted"}
             icon={<Key weight="regular" className="size-4" />}
           />

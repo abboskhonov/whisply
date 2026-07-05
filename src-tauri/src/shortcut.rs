@@ -11,11 +11,32 @@ use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
 /// at the plugin's internal state.
 pub struct ShortcutRegistry(pub Arc<Mutex<Vec<RegisteredShortcut>>>);
 
+/// How the shortcut should react to the OS press/release events.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TriggerMode {
+    /// Press-and-hold: pressed starts capture, released stops it.
+    Hold,
+    /// Tap-to-toggle: pressed flips between idle and recording; release
+    /// is ignored. Best for long dictation sessions.
+    Toggle,
+}
+
+impl TriggerMode {
+    fn from_str(s: &str) -> Self {
+        match s.to_lowercase().as_str() {
+            "toggle" | "press" | "tap" => TriggerMode::Toggle,
+            _ => TriggerMode::Hold,
+        }
+    }
+}
+
 pub struct RegisteredShortcut {
     /// Canonical string the user configured (e.g. "Ctrl+CapsLock").
     pub key_str: String,
     /// Parsed `Shortcut` from the plugin. Held so we can unregister.
     pub parsed: Shortcut,
+    /// Hold (press-and-hold) or toggle (tap to start, tap again to stop).
+    pub mode: TriggerMode,
 }
 
 impl Clone for RegisteredShortcut {
@@ -33,6 +54,7 @@ impl Clone for RegisteredShortcut {
         Self {
             key_str: self.key_str.clone(),
             parsed,
+            mode: self.mode,
         }
     }
 }
@@ -90,18 +112,41 @@ fn normalize_for_plugin(raw: &str) -> String {
 
 // ── Push-to-talk driver ────────────────────────────────────────────────────
 
-fn drive_press(app: &AppHandle, shortcut_key: &str) {
-    log::info!("push-to-talk press: {}", shortcut_key);
-    // 1. Start audio capture (cpal). The global overlay reads this to
-    //    drive the live waveform.
-    if let Err(e) = crate::audio::start_audio_capture(app.clone(), None) {
-        log::warn!("start_audio_capture failed: {e}");
-        crate::overlay::emit_error(app, &e);
-        return;
+fn drive_press(app: &AppHandle, shortcut_key: &str, mode: TriggerMode) {
+    log::info!("push-to-talk press: {} (mode={:?})", shortcut_key, mode);
+
+    // The toggle mode needs to know the current state to flip it; read
+    // the audio state directly. Hold mode always starts capture on press.
+    let is_capturing = app
+        .state::<Arc<crate::audio::AudioState>>()
+        .capturing
+        .load(Ordering::SeqCst);
+
+    let should_start = match mode {
+        TriggerMode::Hold => true,
+        TriggerMode::Toggle => !is_capturing,
+    };
+
+    if should_start {
+        if let Err(e) = crate::audio::start_audio_capture(app.clone(), None) {
+            log::warn!("start_audio_capture failed: {e}");
+            crate::overlay::emit_error(app, &e);
+            return;
+        }
+        crate::overlay::show(app, "recording", "", shortcut_key);
+    } else {
+        // Toggle: user pressed while already recording — treat as stop.
+        log::info!("toggle: stopping capture");
+        let _ = crate::audio::stop_audio_capture(app.clone());
+        crate::overlay::set_state(app, "transcribing", None);
+        let app_for_timer = app.clone();
+        let key_str = shortcut_key.to_string();
+        std::thread::spawn(move || {
+            std::thread::sleep(std::time::Duration::from_millis(1400));
+            crate::overlay::hide(&app_for_timer);
+        });
     }
-    // 2. Show the overlay window with the active shortcut on the pill.
-    crate::overlay::show(app, "recording", "", shortcut_key);
-    // 3. Notify the main app so its UI can update too.
+
     let _ = tauri::Emitter::emit(
         app,
         "whisply://shortcut",
@@ -112,13 +157,15 @@ fn drive_press(app: &AppHandle, shortcut_key: &str) {
     );
 }
 
-fn drive_release(app: &AppHandle, shortcut_key: &str) {
+fn drive_release(app: &AppHandle, shortcut_key: &str, mode: TriggerMode) {
+    // In toggle mode, release is a no-op — capture is bounded by the
+    // next press instead.
+    if mode == TriggerMode::Toggle {
+        return;
+    }
+
     log::info!("push-to-talk release: {}", shortcut_key);
-    // 1. Stop capture.
     let _ = crate::audio::stop_audio_capture(app.clone());
-    // 2. Switch the overlay to the transcribing state, then hide it
-    //    after a short beat so the user sees the spinner before the
-    //    pill pops out.
     crate::overlay::set_state(app, "transcribing", None);
     let app_for_timer = app.clone();
     let key_str = shortcut_key.to_string();
@@ -126,7 +173,6 @@ fn drive_release(app: &AppHandle, shortcut_key: &str) {
         std::thread::sleep(std::time::Duration::from_millis(1400));
         crate::overlay::hide(&app_for_timer);
     });
-    // 3. Notify the main app.
     let _ = tauri::Emitter::emit(
         app,
         "whisply://shortcut",
@@ -149,15 +195,21 @@ pub fn start_shortcut_listener(_app: AppHandle) -> Result<(), String> {
 /// Register a new shortcut to listen for. Format: "Ctrl+B", "Super+V", etc.
 /// The plugin handles the system-level listening — we just need to
 /// convert the string and store the parsed `Shortcut` for later unregister.
+///
+/// `mode` is optional and defaults to "hold". Pass "toggle" for tap-to-toggle
+/// behaviour where the release event is ignored.
 #[tauri::command]
 pub fn register_shortcut_evdev(
     app: AppHandle,
     shortcut_key: String,
+    mode: Option<String>,
 ) -> Result<(), String> {
     let normalized = normalize_for_plugin(&shortcut_key);
     let parsed: Shortcut = normalized
         .parse()
         .map_err(|e| format!("Couldn't parse shortcut '{shortcut_key}': {e}"))?;
+
+    let trigger_mode = TriggerMode::from_str(mode.as_deref().unwrap_or("hold"));
 
     // Unregister any prior copy of the same shortcut so we don't end up
     // with two handlers firing for one press.
@@ -170,8 +222,12 @@ pub fn register_shortcut_evdev(
     app.global_shortcut()
         .on_shortcut(parsed.clone(), move |_app, _scut, event| {
             match event.state {
-                ShortcutState::Pressed => drive_press(&app_for_handler, &user_key),
-                ShortcutState::Released => drive_release(&app_for_handler, &user_key),
+                ShortcutState::Pressed => {
+                    drive_press(&app_for_handler, &user_key, trigger_mode)
+                }
+                ShortcutState::Released => {
+                    drive_release(&app_for_handler, &user_key, trigger_mode)
+                }
             }
         })
         .map_err(|e| {
@@ -186,15 +242,23 @@ pub fn register_shortcut_evdev(
     guard.push(RegisteredShortcut {
         key_str: shortcut_key.clone(),
         parsed: parsed.clone(),
+        mode: trigger_mode,
     });
 
-    log::info!("Registered shortcut: {}", shortcut_key);
+    log::info!(
+        "Registered shortcut: {} (mode={:?})",
+        shortcut_key,
+        trigger_mode
+    );
 
     // Mirror to the main app so the Logs page can show it inline.
     let _ = tauri::Emitter::emit(
         &app,
         "whisply://shortcut-registered",
-        serde_json::json!({ "shortcut": shortcut_key }),
+        serde_json::json!({
+            "shortcut": shortcut_key,
+            "mode": format!("{:?}", trigger_mode).to_lowercase(),
+        }),
     );
     Ok(())
 }

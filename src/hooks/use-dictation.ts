@@ -78,7 +78,8 @@ export function useDictation(options: UseDictationOptions = {}) {
         const combo = JSON.parse(saved) as ShortcutConfig
         const key = comboToShortcutString(combo)
         setShortcutKey(key)
-        invoke("register_shortcut_evdev", { shortcutKey: key }).catch(
+        const mode = localStorage.getItem("whisply-trigger-mode") || "hold"
+        invoke("register_shortcut_evdev", { shortcutKey: key, mode }).catch(
           (err) => {
             console.error("register_shortcut_evdev failed:", err)
           }
