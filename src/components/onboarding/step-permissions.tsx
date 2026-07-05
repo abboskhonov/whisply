@@ -5,6 +5,7 @@ import {
   Keyboard,
   Globe,
   WarningCircle,
+  Terminal,
 } from "@phosphor-icons/react"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
@@ -12,6 +13,8 @@ import { isTauri } from "@/lib/tauri"
 import {
   getMicrophoneStatus,
   getInputStatus,
+  getEvdevAccessStatus,
+  fixEvdevPermissions,
   initializeInput,
   testInputConnection,
 } from "@/lib/system"
@@ -64,6 +67,13 @@ export function StepPermissions({ onNext, onBack }: StepPermissionsProps) {
       description: "Show recording status and alerts",
       icon: <Globe weight="regular" className="size-4" />,
       state: "granted",
+    },
+    {
+      id: "global-shortcuts",
+      label: "Global shortcuts",
+      description: "Detecting evdev access for global keyboard shortcuts",
+      icon: <Terminal weight="regular" className="size-4" />,
+      state: "pending",
     },
   ])
   const [busy, setBusy] = React.useState(true)
@@ -127,6 +137,39 @@ export function StepPermissions({ onNext, onBack }: StepPermissionsProps) {
             description: "Input system check failed, using clipboard fallback",
           })
         }
+
+        // — Global shortcuts access (evdev) —
+        updatePermission("global-shortcuts", { state: "checking" })
+        try {
+          const evdev = await getEvdevAccessStatus()
+          if (evdev.can_read_events) {
+            updatePermission("global-shortcuts", {
+              state: "granted",
+              description: "Global keyboard events accessible",
+            })
+          } else if (evdev.in_input_group) {
+            updatePermission("global-shortcuts", {
+              state: "granted",
+              description: "In input group — log out and back in if not working",
+            })
+          } else if (evdev.pkexec_available) {
+            updatePermission("global-shortcuts", {
+              state: "denied",
+              description: evdev.message,
+              detail: "Click terminal icon to add yourself to input group",
+            })
+          } else {
+            updatePermission("global-shortcuts", {
+              state: "denied",
+              description: evdev.message,
+            })
+          }
+        } catch {
+          updatePermission("global-shortcuts", {
+            state: "unavailable",
+            description: "Could not check evdev access",
+          })
+        }
       } else {
         // Web mode — use browser APIs
         updatePermission("microphone", { state: "checking" })
@@ -150,6 +193,25 @@ export function StepPermissions({ onNext, onBack }: StepPermissionsProps) {
 
     checkAll()
   }, [])
+
+  const handleFixEvdev = async () => {
+    updatePermission("global-shortcuts", {
+      state: "checking",
+      description: "Running pkexec…",
+    })
+    try {
+      const result = await fixEvdevPermissions()
+      updatePermission("global-shortcuts", {
+        state: "granted",
+        description: result,
+      })
+    } catch (err) {
+      updatePermission("global-shortcuts", {
+        state: "denied",
+        description: String(err),
+      })
+    }
+  }
 
   const allRequiredGranted = permissions
     .filter((p) => p.state !== "unavailable")
@@ -234,6 +296,19 @@ export function StepPermissions({ onNext, onBack }: StepPermissionsProps) {
                       ? "Checking…"
                       : "Pending"}
             </span>
+            {perm.id === "global-shortcuts" &&
+              perm.state === "denied" &&
+              perm.detail?.includes("pkexec") || perm.detail?.includes("Fix") ? (
+              <Button
+                variant="outline"
+                size="xs"
+                className="shrink-0"
+                onClick={handleFixEvdev}
+              >
+                <Terminal weight="bold" className="size-3" />
+                Fix permissions
+              </Button>
+            ) : null}
           </div>
         ))}
       </div>

@@ -20,6 +20,13 @@ export type InputStatus = {
   wayland: boolean
 }
 
+export type EvdevAccessStatus = {
+  can_read_events: boolean
+  in_input_group: boolean
+  pkexec_available: boolean
+  message: string
+}
+
 export async function getSystemInfo(): Promise<SystemInfo> {
   return invoke<SystemInfo>("get_system_info")
 }
@@ -30,6 +37,14 @@ export async function getMicrophoneStatus(): Promise<MicrophoneStatus> {
 
 export async function getInputStatus(): Promise<InputStatus> {
   return invoke<InputStatus>("get_input_status")
+}
+
+export async function getEvdevAccessStatus(): Promise<EvdevAccessStatus> {
+  return invoke<EvdevAccessStatus>("get_evdev_access_status")
+}
+
+export async function fixEvdevPermissions(): Promise<string> {
+  return invoke<string>("fix_evdev_permissions")
 }
 
 export async function initializeInput(): Promise<void> {

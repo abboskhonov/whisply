@@ -55,6 +55,8 @@ pub fn run() {
             system::get_system_info,
             system::get_microphone_status,
             system::get_input_status,
+            system::get_evdev_access_status,
+            system::fix_evdev_permissions,
             input::initialize_input,
             input::test_input_connection,
             shortcut::start_shortcut_listener,

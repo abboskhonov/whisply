@@ -168,3 +168,156 @@ pub fn get_microphone_status() -> MicrophoneStatus {
 pub fn get_input_status() -> InputStatus {
     check_input()
 }
+
+// ── Evdev / global shortcut access checks ────────────────────────────────────
+
+#[derive(Debug, Serialize)]
+pub struct EvdevAccessStatus {
+    /// Whether /dev/input/event* files can be opened for reading.
+    pub can_read_events: bool,
+    /// Whether the current user is in the `input` group.
+    pub in_input_group: bool,
+    /// Whether `pkexec` is available on this system.
+    pub pkexec_available: bool,
+    /// Human-readable message.
+    pub message: String,
+}
+
+fn check_evdev_readable() -> bool {
+    // Try to open one of the event devices — if any is readable, we're good.
+    let dir = match std::fs::read_dir("/dev/input") {
+        Ok(d) => d,
+        Err(_) => return false,
+    };
+
+    for entry in dir.flatten() {
+        let path = entry.path();
+        if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
+            if name.starts_with("event") && std::fs::metadata(&path).is_ok() {
+                // Try to open for reading
+                if std::fs::OpenOptions::new()
+                    .read(true)
+                    .open(&path)
+                    .is_ok()
+                {
+                    return true;
+                }
+            }
+        }
+    }
+    false
+}
+
+fn check_in_input_group() -> bool {
+    // Parse /etc/group to find the gid of the `input` group
+    let group_content = match std::fs::read_to_string("/etc/group") {
+        Ok(c) => c,
+        Err(_) => return false,
+    };
+
+    let input_gid: Option<u32> = group_content.lines().find_map(|line| {
+        let mut parts = line.split(':');
+        if parts.next()? == "input" {
+            parts.next()?; // x
+            parts.next()?.parse().ok()
+        } else {
+            None
+        }
+    });
+
+    let input_gid = match input_gid {
+        Some(g) => g,
+        None => return false,
+    };
+
+    // Parse /proc/self/status to find current group list
+    let status = match std::fs::read_to_string("/proc/self/status") {
+        Ok(c) => c,
+        Err(_) => return false,
+    };
+
+    for line in status.lines() {
+        if let Some(groups_str) = line.strip_prefix("Groups:\t") {
+            let groups: Vec<u32> = groups_str
+                .split_whitespace()
+                .filter_map(|g| g.parse().ok())
+                .collect();
+            return groups.contains(&input_gid);
+        }
+    }
+
+    false
+}
+
+fn check_pkexec_available() -> bool {
+    Command::new("which")
+        .arg("pkexec")
+        .output()
+        .ok()
+        .map_or(false, |o| o.status.success())
+}
+
+#[tauri::command]
+pub fn get_evdev_access_status() -> EvdevAccessStatus {
+    let can_read = check_evdev_readable();
+    let in_group = check_in_input_group();
+    let pkexec = check_pkexec_available();
+
+    let message = if can_read {
+        "Global keyboard events are accessible.".to_string()
+    } else if in_group {
+        "You are in the 'input' group but permission changes may need a reboot."
+            .to_string()
+    } else if pkexec {
+        "Need to add your user to the 'input' group for global keyboard support."
+            .to_string()
+    } else {
+        "Global keyboard shortcuts require the 'input' group. Run: sudo usermod -a -G input $USER"
+            .to_string()
+    };
+
+    EvdevAccessStatus {
+        can_read_events: can_read,
+        in_input_group: in_group,
+        pkexec_available: pkexec,
+        message,
+    }
+}
+
+/// Attempt to add the current user to the `input` group via `pkexec`.
+/// Returns a status message. Requires polkit (pkexec) to be installed.
+#[tauri::command]
+pub fn fix_evdev_permissions() -> Result<String, String> {
+    let whoami = Command::new("whoami")
+        .output()
+        .map_err(|e| format!("Failed to run whoami: {}", e))?;
+    let user = String::from_utf8_lossy(&whoami.stdout).trim().to_string();
+
+    if user.is_empty() {
+        return Err("Could not determine current user".into());
+    }
+
+    let output = Command::new("pkexec")
+        .args([
+            "usermod",
+            "-a",
+            "-G",
+            "input",
+            &user,
+        ])
+        .output()
+        .map_err(|e| format!("Failed to run pkexec: {}", e))?;
+
+    if output.status.success() {
+        Ok(format!(
+            "Added '{}' to the 'input' group. Please log out and back in for changes to take effect.",
+            user
+        ))
+    } else {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        Err(format!(
+            "Failed to add to input group: {}",
+            stderr.trim()
+        ))
+    }
+}
