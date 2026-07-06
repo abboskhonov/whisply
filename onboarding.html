@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Welcome to Whisply</title>
+    <style>
+      /*
+        Onboarding runs inside its own Tauri webview (label "onboarding"),
+        a small ~760×720 window. The body fills the window so the React
+        root owns the whole viewport. We let the page background be the
+        window's own background — no transparent tricks.
+      */
+      html, body, #root {
+        margin: 0;
+        padding: 0;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+      }
+      body {
+        font-family: 'Inter Variable', system-ui, -apple-system, sans-serif;
+        -webkit-font-smoothing: antialiased;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/onboarding/main.tsx"></script>
+  </body>
+</html>

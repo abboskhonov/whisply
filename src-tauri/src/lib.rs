@@ -1,5 +1,6 @@
 mod audio;
 mod input;
+mod onboarding;
 mod overlay;
 mod shortcut;
 mod system;
@@ -59,6 +60,7 @@ pub fn run() {
         .plugin(external_navigation_plugin())
         .manage(shortcut::ShortcutRegistry::new())
         .manage(shortcut::ListenerRunning::new())
+        .manage(onboarding::OnboardingState::new())
         .manage(Arc::new(audio::AudioState::new()))
         .on_page_load(|webview, payload| {
             if webview.label() == "main" && matches!(payload.event(), PageLoadEvent::Finished) {
@@ -79,6 +81,13 @@ pub fn run() {
             // works after a hot reload.
             let handle = app.handle().clone();
             overlay::ensure_window(&handle);
+
+            // Load the persisted "onboarding complete?" flag and, if the
+            // user hasn't finished the wizard yet, pop the small window
+            // open. The main window also comes up underneath.
+            let onboarding_state = app.state::<onboarding::OnboardingState>();
+            onboarding_state.init(&handle);
+            onboarding::open_if_incomplete(&handle);
 
             // The global-shortcut plugin doesn't need a manual "start" —
             // it installs its handler at builder time and starts watching
@@ -114,6 +123,10 @@ pub fn run() {
             audio::start_audio_capture,
             audio::stop_audio_capture,
             audio::is_capturing,
+            onboarding::is_onboarding_complete,
+            onboarding::mark_onboarding_complete,
+            onboarding::reset_onboarding,
+            onboarding::open_onboarding_window,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

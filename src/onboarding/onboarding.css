@@ -1,0 +1,97 @@
+/*
+ * Onboarding window styles.
+ *
+ * The window itself is a regular decorated Tauri webview, so we don't
+ * need transparent tricks. The interesting bit is the open/close +
+ * step transition animation: the whole view scales in, and each step
+ * uses the transitions-dev page-side-by-side pattern.
+ */
+
+.onboarding-stage {
+  position: relative;
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+  background: var(--color-background);
+  /*
+   * Open animation. CSS doesn't know about Tauri window mount, so we
+   * start the stage at scale 0.985 + opacity 0 and let it pop in once
+   * React paints. The reduced-motion guard below disables this.
+   */
+  animation: onboarding-stage-in var(--duration-fast, 250ms)
+    var(--ease-smooth-out, cubic-bezier(0.22, 1, 0.36, 1)) both;
+}
+
+.onboarding-step-track {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
+.onboarding-step-page {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  /*
+   * Step transitions use the transitions-dev page-side-by-side pattern
+   * (08-page-side-by-side.md): two pages sit side-by-side, the track
+   * slides to bring the active one in view. We approximate that by
+   * staggering each page's enter/exit with a soft translateX + blur.
+   */
+  opacity: 0;
+  transform: translateX(calc(var(--onb-step-dir, 1) * var(--distance-base, 8px)));
+  filter: blur(var(--blur-small, 2px));
+  transition:
+    opacity var(--duration-fast, 250ms) var(--ease-smooth-out, cubic-bezier(0.22, 1, 0.36, 1)),
+    transform var(--duration-fast, 250ms) var(--ease-smooth-out, cubic-bezier(0.22, 1, 0.36, 1)),
+    filter var(--duration-fast, 250ms) var(--ease-smooth-out, cubic-bezier(0.22, 1, 0.36, 1));
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.onboarding-step-page[data-active="true"] {
+  opacity: 1;
+  transform: translateX(0);
+  filter: blur(0);
+  pointer-events: auto;
+}
+
+.onboarding-step-page[data-exiting="true"] {
+  opacity: 0;
+  transform: translateX(calc(var(--onb-step-dir, 1) * -1 * var(--distance-base, 8px)));
+  filter: blur(var(--blur-small, 2px));
+}
+
+/*
+ * Stagger the heading + body inside each step using the texts-reveal
+ * pattern (18-texts-reveal.md). We tag the elements with .onb-reveal
+ * and let the parent's data-active flip the cascade. (Reserved for
+ * future use — the per-step components don't tag themselves yet, so
+ * this is currently a no-op; the page-level slide carries the motion.)
+ */
+
+@keyframes onboarding-stage-in {
+  from {
+    opacity: 0;
+    transform: scale(0.985);
+    filter: blur(2px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+    filter: blur(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .onboarding-stage,
+  .onboarding-step-page,
+  .onb-reveal {
+    animation: none !important;
+    transition: none !important;
+    transform: none !important;
+    filter: none !important;
+    opacity: 1 !important;
+  }
+}

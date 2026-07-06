@@ -38,6 +38,19 @@
         "visible": false,
         "shadow": false,
         "center": true
+      },
+      {
+        "label": "onboarding",
+        "title": "Welcome to Whisply",
+        "url": "onboarding.html",
+        "width": 760,
+        "height": 720,
+        "minWidth": 620,
+        "minHeight": 540,
+        "resizable": true,
+        "decorations": true,
+        "visible": false,
+        "center": true
       }
     ],
     "security": {

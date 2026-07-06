@@ -11,7 +11,6 @@ import { Route as logsRoute } from "@/routes/logs"
 import { Route as settingsRoute } from "@/routes/settings"
 import { Route as snippetsRoute } from "@/routes/snippets"
 import { Route as styleRoute } from "@/routes/style"
-import { Route as onboardingRoute } from "@/routes/onboarding"
 
 // Settings sub-routes
 import { Route as settingsIndexRoute } from "@/routes/settings/index"
@@ -25,7 +24,6 @@ import { Route as settingsAboutRoute } from "@/routes/settings/about"
 
 const routeTree = rootRoute.addChildren([
   indexRoute,
-  onboardingRoute,
   insightsRoute,
   logsRoute,
   dictionaryRoute,

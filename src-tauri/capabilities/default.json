@@ -4,7 +4,8 @@
   "description": "Capability for the main window and the global recording overlay",
   "windows": [
     "main",
-    "recording_overlay"
+    "recording_overlay",
+    "onboarding"
   ],
   "permissions": [
     "core:default",
@@ -14,6 +15,7 @@
     "core:window:allow-hide",
     "core:window:allow-is-visible",
     "core:window:allow-set-focus",
+    "core:window:allow-close",
     "core:event:allow-emit",
     "core:event:allow-listen",
     "core:event:allow-emit-to",

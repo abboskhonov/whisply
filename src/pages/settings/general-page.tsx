@@ -1,16 +1,19 @@
-import { useNavigate } from "@tanstack/react-router"
 import { ArrowsClockwise, Waveform } from "@phosphor-icons/react"
+import { invoke } from "@tauri-apps/api/core"
 
 import { Button } from "@/components/ui/button"
 import { PageShell, PageHeader, Section } from "@/components/page"
-import { clearOnboardingComplete } from "@/pages/onboarding-page"
 
 export function GeneralSettingsPage() {
-  const navigate = useNavigate()
-
-  const handleRerunWizard = () => {
-    clearOnboardingComplete()
-    navigate({ to: "/onboarding" })
+  const handleRerunWizard = async () => {
+    // `reset_onboarding` clears the persisted "complete" flag in Rust
+    // and opens the small onboarding window. The wizard is no longer
+    // a route in this webview.
+    try {
+      await invoke("reset_onboarding")
+    } catch (err) {
+      console.error("reset_onboarding failed:", err)
+    }
   }
 
   return (
