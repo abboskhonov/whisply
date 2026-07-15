@@ -33,7 +33,7 @@ function DialogOverlay({
         // Open: fade in over 200ms. Close: fade out faster (120ms) so it
         // feels snappier than the modal — the modal does the visual work.
         "data-open:animate-in data-open:fade-in-0 data-open:[animation-duration:200ms] data-open:[animation-timing-function:cubic-bezier(0.22,1,0.36,1)]",
-        "data-closed:animate-out data-closed:fade-out-0 data-closed:[animation-duration:120ms] data-closed:[animation-timing-function:cubic-bezier(0.22,1,0.36,1)]",
+        "data-closed:animate-out data-closed:fade-out-0 data-closed:[animation-duration:120ms] data-closed:[animation-timing-function:cubic-bezier(0.22,1,0.36,1)] data-closed:[animation-fill-mode:forwards]",
         className
       )}
       {...props}

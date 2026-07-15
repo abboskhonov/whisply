@@ -1,5 +1,6 @@
 import { useEffect, useState, useRef } from "react"
 import { listen, emit } from "@tauri-apps/api/event"
+import { invoke } from "@tauri-apps/api/core"
 import "./overlay.css"
 
 /**
@@ -75,7 +76,14 @@ export function OverlayApp() {
         }
       )
       unsubs.push(u2)
-    })()
+
+      // Rust may receive the global shortcut before React mounts. Signal
+      // readiness only after both listeners exist so any deferred state is
+      // delivered to a real subscriber rather than lost at page-load time.
+      await invoke("overlay_ready")
+    })().catch((error) => {
+      console.error("Failed to initialize overlay listeners:", error)
+    })
 
     return () => {
       mounted = false

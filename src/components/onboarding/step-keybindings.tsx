@@ -5,6 +5,7 @@ import {
   Hand,
   ToggleLeft,
   CornersOut,
+  Warning,
 } from "@phosphor-icons/react"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
@@ -82,10 +83,12 @@ export function StepKeybindings({ onNext, onBack }: StepKeybindingsProps) {
   const [listening, setListening] = React.useState(false)
   const [saved, setSaved] = React.useState(false)
   const [registering, setRegistering] = React.useState(false)
+  const [registrationError, setRegistrationError] = React.useState<string | null>(null)
 
   const handleStartListening = () => {
     setListening(true)
     setSaved(false)
+    setRegistrationError(null)
   }
 
   React.useEffect(() => {
@@ -118,25 +121,28 @@ export function StepKeybindings({ onNext, onBack }: StepKeybindingsProps) {
 
   const handleSave = async () => {
     setRegistering(true)
+    setRegistrationError(null)
 
-    localStorage.setItem("whisply-shortcut", JSON.stringify(combo))
-    localStorage.setItem("whisply-trigger-mode", mode)
-
-    if (isTauri()) {
-      const shortcutStr = comboToString(combo)
-      try {
+    try {
+      if (isTauri()) {
+        const shortcutStr = comboToString(combo)
         await invoke("register_shortcut_evdev", {
           shortcutKey: shortcutStr,
           mode,
         })
-      } catch (err) {
-        console.warn("Failed to register shortcut:", err)
       }
-    }
 
-    setRegistering(false)
-    setSaved(true)
-    onNext()
+      localStorage.setItem("whisply-shortcut", JSON.stringify(combo))
+      localStorage.setItem("whisply-trigger-mode", mode)
+      setSaved(true)
+      onNext()
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      console.error("Failed to register shortcut:", err)
+      setRegistrationError(message)
+    } finally {
+      setRegistering(false)
+    }
   }
 
   return (
@@ -293,6 +299,16 @@ export function StepKeybindings({ onNext, onBack }: StepKeybindingsProps) {
           })}
         </ul>
       </div>
+
+      {registrationError ? (
+        <div
+          role="alert"
+          className="flex items-start gap-2 rounded-lg border border-destructive/25 bg-destructive/5 px-3 py-2.5 text-xs text-destructive"
+        >
+          <Warning weight="fill" className="mt-0.5 size-3.5 shrink-0" />
+          <span>{registrationError}</span>
+        </div>
+      ) : null}
 
       <div className="flex items-center justify-between border-t border-border/40 pt-4">
         <Button variant="ghost" onClick={onBack}>

@@ -7,6 +7,7 @@ type StepCompleteProps = {
 }
 
 const HIGHLIGHTS = [
+  "Offline Parakeet speech model ready",
   "Push-to-talk shortcut configured",
   "Microphone access granted",
   "Linux system detected and compatible",

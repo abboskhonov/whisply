@@ -13,6 +13,8 @@ const OVERLAY_HEIGHT: f64 = 120.0;
 /// Pending overlay state to show once the webview is ready.
 static PENDING_STATE: Mutex<Option<PendingOverlay>> = Mutex::new(None);
 static OVERLAY_READY: AtomicBool = AtomicBool::new(false);
+#[cfg(target_os = "linux")]
+static LAYER_SHELL_INITIALIZED: AtomicBool = AtomicBool::new(false);
 
 struct PendingOverlay {
     state: String,
@@ -33,6 +35,13 @@ pub struct OverlayStatePayload {
 /// cannot guarantee on Wayland compositors like Mutter/GNOME.
 #[cfg(target_os = "linux")]
 fn init_layer_shell(window: &tauri::WebviewWindow) {
+    // GTK calls must stay on the setup thread. Mark the attempt even when the
+    // compositor has no layer-shell support so shortcut worker threads never
+    // retry GTK initialization later.
+    if LAYER_SHELL_INITIALIZED.swap(true, Ordering::SeqCst) {
+        return;
+    }
+
     let Ok(gtk_window) = window.gtk_window() else {
         log::warn!("gtk_window() failed — layer shell not available");
         return;
@@ -47,9 +56,8 @@ fn init_layer_shell(window: &tauri::WebviewWindow) {
     gtk_window.set_layer(Layer::Overlay);
     gtk_window.set_keyboard_mode(gtk_layer_shell::KeyboardMode::None);
     gtk_window.set_exclusive_zone(0);
+    // With no horizontal anchor, layer-shell centers the fixed-width surface.
     gtk_window.set_anchor(Edge::Top, true);
-    gtk_window.set_anchor(Edge::Left, true);
-    gtk_window.set_anchor(Edge::Right, true);
 
     log::info!("GTK layer shell initialized for overlay (Layer::Overlay)");
 }
@@ -61,7 +69,8 @@ fn init_layer_shell(_window: &tauri::WebviewWindow) {}
 /// On Linux, also initialises GTK layer shell for proper Wayland
 /// always-on-top behaviour.
 pub fn ensure_window(app: &AppHandle) {
-    if app.get_webview_window(OVERLAY_LABEL).is_some() {
+    if let Some(window) = app.get_webview_window(OVERLAY_LABEL) {
+        init_layer_shell(&window);
         return;
     }
 
@@ -143,8 +152,9 @@ pub fn mark_ready(app: &AppHandle) {
     }
 }
 
-pub fn is_ready() -> bool {
-    OVERLAY_READY.load(Ordering::SeqCst)
+#[tauri::command]
+pub fn overlay_ready(app: AppHandle) {
+    mark_ready(&app);
 }
 
 fn match_state(s: &str) -> &'static str {
@@ -239,6 +249,12 @@ pub fn set_state(app: &AppHandle, state: &str, error: Option<&str>) {
 }
 
 pub fn emit_error(app: &AppHandle, message: &str) {
+    ensure_window(app);
+    position_overlay(app);
+    if let Some(window) = app.get_webview_window(OVERLAY_LABEL) {
+        let _ = window.show();
+    }
+
     let _ = app.emit_to(
         OVERLAY_LABEL,
         "whisply://audio-state",
@@ -249,11 +265,4 @@ pub fn emit_error(app: &AppHandle, message: &str) {
             error: message.to_string(),
         },
     );
-}
-
-/// Returns true if the overlay window is visible.
-pub fn is_visible(app: &AppHandle) -> bool {
-    app.get_webview_window(OVERLAY_LABEL)
-        .and_then(|w| w.is_visible().ok())
-        .unwrap_or(false)
 }

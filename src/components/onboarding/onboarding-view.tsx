@@ -5,6 +5,7 @@ import { invoke } from "@tauri-apps/api/core"
 import { StepIndicator } from "@/components/onboarding/step-indicator"
 import { StepWelcome } from "@/components/onboarding/step-welcome"
 import { StepOsDetection } from "@/components/onboarding/step-os-detection"
+import { StepModel } from "@/components/onboarding/step-model"
 import { StepPermissions } from "@/components/onboarding/step-permissions"
 import { StepKeybindings } from "@/components/onboarding/step-keybindings"
 import { StepComplete } from "@/components/onboarding/step-complete"
@@ -14,7 +15,7 @@ import { StepComplete } from "@/components/onboarding/step-complete"
 // and the buttons (if any remain visible) don't need to do anything.
 const NOOP = () => {}
 
-// The five step components take slightly different prop shapes
+// The six step components take slightly different prop shapes
 // (some want onNext/onBack, the last wants onFinish). We hold the
 // union as our state, but type the bound components as accepting
 // the *wide* optional form so TS doesn't try to intersect all five
@@ -32,6 +33,7 @@ type StepComponent = React.ComponentType<{
 const STEPS = [
   { id: "welcome", label: "Welcome" },
   { id: "os", label: "System" },
+  { id: "model", label: "Model" },
   { id: "permissions", label: "Permissions" },
   { id: "keybindings", label: "Shortcuts" },
   { id: "complete", label: "Done" },
@@ -40,6 +42,7 @@ const STEPS = [
 const STEP_COMPONENTS = [
   StepWelcome,
   StepOsDetection,
+  StepModel,
   StepPermissions,
   StepKeybindings,
   StepComplete,

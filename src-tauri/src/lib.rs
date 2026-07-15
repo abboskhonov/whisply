@@ -1,9 +1,12 @@
 mod audio;
+mod dictation;
 mod input;
+mod models;
 mod onboarding;
 mod overlay;
 mod shortcut;
 mod system;
+mod transcription;
 
 use std::sync::Arc;
 
@@ -61,17 +64,15 @@ pub fn run() {
         .manage(shortcut::ShortcutRegistry::new())
         .manage(shortcut::ListenerRunning::new())
         .manage(onboarding::OnboardingState::new())
+        .manage(dictation::DictationState::new())
+        .manage(models::ModelManager::new())
+        .manage(input::InputState::new())
+        .manage(transcription::TranscriptionState::new())
         .manage(Arc::new(audio::AudioState::new()))
         .on_page_load(|webview, payload| {
             if webview.label() == "main" && matches!(payload.event(), PageLoadEvent::Finished) {
                 log::info!("main webview finished loading");
                 let _ = webview.window().show();
-            }
-            if webview.label() == "recording_overlay"
-                && matches!(payload.event(), PageLoadEvent::Finished)
-            {
-                log::info!("recording_overlay webview finished loading");
-                overlay::mark_ready(&webview.app_handle());
             }
         })
         .setup(|app| {
@@ -87,14 +88,17 @@ pub fn run() {
             // open. The main window also comes up underneath.
             let onboarding_state = app.state::<onboarding::OnboardingState>();
             onboarding_state.init(&handle);
+            app.state::<models::ModelManager>().init(&handle);
             onboarding::open_if_incomplete(&handle);
 
-            // The global-shortcut plugin doesn't need a manual "start" —
-            // it installs its handler at builder time and starts watching
-            // as soon as a shortcut is registered. We just log the boot
-            // so it's obvious in `tauri dev` output that the pipeline
-            // came up cleanly.
-            log::info!("global-shortcut plugin ready (registration is per-shortcut)");
+            // Tauri's Linux global-shortcut backend is X11-only. On Wayland,
+            // start the evdev listener used by the permission step instead.
+            // A permissions failure is recoverable: registration retries it.
+            if let Err(error) = shortcut::start_shortcut_listener(handle.clone()) {
+                log::warn!("shortcut listener not ready: {error}");
+            } else {
+                log::info!("shortcut listener ready");
+            }
 
             // Listen for the overlay's cancel button and stop capture + hide.
             // The cancel event is emitted from the overlay window with no
@@ -102,8 +106,7 @@ pub fn run() {
             let h2 = handle.clone();
             app.listen("whisply://overlay-cancel", move |_event| {
                 log::info!("overlay cancel received");
-                let _ = audio::stop_audio_capture(h2.clone());
-                overlay::hide(&h2);
+                dictation::cancel(&h2);
             });
             Ok(())
         })
@@ -113,12 +116,18 @@ pub fn run() {
             system::get_input_status,
             system::get_evdev_access_status,
             system::fix_evdev_permissions,
+            models::list_models,
+            models::select_model,
+            models::download_model,
+            models::cancel_model_download,
             input::initialize_input,
             input::test_input_connection,
+            input::insert_text,
             shortcut::start_shortcut_listener,
             shortcut::register_shortcut_evdev,
             shortcut::unregister_shortcut_evdev,
             shortcut::unregister_all_shortcuts_evdev,
+            overlay::overlay_ready,
             audio::list_microphones,
             audio::start_audio_capture,
             audio::stop_audio_capture,

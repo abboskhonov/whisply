@@ -12,6 +12,8 @@ const LEVEL_BUCKETS: usize = 16;
 const LEVEL_EMIT_HZ: u32 = 24;
 /// How often we emit accumulated audio data for the demo (Hz). 16 Hz is fine for a visual demo.
 const SAMPLE_EMIT_HZ: u32 = 16;
+/// Keep dictations bounded so an accidentally stuck shortcut cannot exhaust RAM.
+const MAX_UTTERANCE_SECONDS: usize = 5 * 60;
 
 #[derive(Clone, Debug, Serialize)]
 pub struct DeviceInfo {
@@ -37,6 +39,11 @@ pub struct AudioError {
     pub message: String,
 }
 
+pub struct CapturedAudio {
+    pub samples: Vec<f32>,
+    pub sample_rate: u32,
+}
+
 pub struct AudioState {
     pub stream: Mutex<Option<cpal::Stream>>,
     pub config: Mutex<Option<cpal::SupportedStreamConfig>>,
@@ -49,9 +56,11 @@ pub struct AudioState {
     /// Per-bucket smoothed RMS levels in [0, 1]. Frontend reads these via
     /// the `whisply://mic-level` event.
     pub smoothed_levels: Mutex<[f32; LEVEL_BUCKETS]>,
-    /// Rolling buffer of recent samples for the visual demo. 16 kHz mono,
-    /// flushed at SAMPLE_EMIT_HZ to the frontend over `whisply://audio-data`.
+    /// Rolling buffer of recent samples for the visual demo, flushed at
+    /// SAMPLE_EMIT_HZ to the frontend over `whisply://audio-data`.
     pub sample_buffer: Mutex<Vec<f32>>,
+    /// Complete mono recording transferred to the local ASR worker on stop.
+    pub utterance_buffer: Mutex<Vec<f32>>,
 }
 
 impl AudioState {
@@ -66,6 +75,7 @@ impl AudioState {
             frame_count: AtomicU64::new(0),
             smoothed_levels: Mutex::new([0.0; LEVEL_BUCKETS]),
             sample_buffer: Mutex::new(Vec::with_capacity(8192)),
+            utterance_buffer: Mutex::new(Vec::with_capacity(16000 * 30)),
         }
     }
 }
@@ -206,6 +216,10 @@ pub fn start_audio_capture(app: AppHandle, device_name: Option<String>) -> Resul
         e.to_string()
     })?;
 
+    state.smoothed_levels.lock().unwrap().fill(0.0);
+    state.sample_buffer.lock().unwrap().clear();
+    state.utterance_buffer.lock().unwrap().clear();
+
     stream
         .play()
         .map_err(|e| format!("Failed to start audio stream: {e}"))?;
@@ -220,8 +234,6 @@ pub fn start_audio_capture(app: AppHandle, device_name: Option<String>) -> Resul
     ));
     state.capturing.store(true, Ordering::SeqCst);
     state.frame_count.store(0, Ordering::SeqCst);
-    state.smoothed_levels.lock().unwrap().fill(0.0);
-    state.sample_buffer.lock().unwrap().clear();
 
     let _ = app.emit("whisply://audio-started", started.clone());
     // Tell the overlay window we're recording. The main app listens for
@@ -239,38 +251,49 @@ pub fn start_audio_capture(app: AppHandle, device_name: Option<String>) -> Resul
     Ok(started)
 }
 
-#[tauri::command]
-pub fn stop_audio_capture(app: AppHandle) -> Result<AudioStopped, String> {
+pub fn stop_and_take_audio(app: &AppHandle) -> Result<(AudioStopped, CapturedAudio), String> {
     let state = app.state::<Arc<AudioState>>();
-    if !state.capturing.load(Ordering::SeqCst) {
-        return Ok(AudioStopped {
-            reason: "not_running".into(),
-        });
+    if !state.capturing.swap(false, Ordering::SeqCst) {
+        return Ok((
+            AudioStopped {
+                reason: "not_running".into(),
+            },
+            CapturedAudio {
+                samples: Vec::new(),
+                sample_rate: 0,
+            },
+        ));
     }
-    state.capturing.store(false, Ordering::SeqCst);
-    // Dropping the stream stops capture. We move it out of the lock to drop
-    // without holding the lock (Stream may have its own drop guard).
-    let stream = state.stream.lock().unwrap().take();
-    drop(stream);
+
+    // Dropping the stream stops capture. Move it out of the lock so the audio
+    // backend can shut down without blocking callback-owned mutexes.
+    drop(state.stream.lock().unwrap().take());
     state.smoothed_levels.lock().unwrap().fill(0.0);
+    let sample_rate = state
+        .config
+        .lock()
+        .unwrap()
+        .as_ref()
+        .map(|config| config.sample_rate().0)
+        .unwrap_or(0);
+    let samples = std::mem::take(&mut *state.utterance_buffer.lock().unwrap());
     let stopped = AudioStopped {
         reason: "user".into(),
     };
     let _ = app.emit("whisply://audio-stopped", &stopped);
-    // Signal the overlay to switch to the transcribing state. The actual
-    // hide() happens a beat later from the shortcut handler (or whoever
-    // decides the transcribing window is over).
-    let _ = app.emit_to(
-        "recording_overlay",
-        "whisply://audio-state",
-        crate::overlay::OverlayStatePayload {
-            state: "transcribing",
-            device: String::new(),
-            shortcut: String::new(),
-            error: String::new(),
+    crate::overlay::set_state(app, "transcribing", None);
+    Ok((
+        stopped,
+        CapturedAudio {
+            samples,
+            sample_rate,
         },
-    );
-    Ok(stopped)
+    ))
+}
+
+#[tauri::command]
+pub fn stop_audio_capture(app: AppHandle) -> Result<AudioStopped, String> {
+    stop_and_take_audio(&app).map(|(stopped, _)| stopped)
 }
 
 #[tauri::command]
@@ -333,6 +356,12 @@ where
         {
             let mut buf = state.sample_buffer.lock().unwrap();
             buf.extend_from_slice(&mono);
+        }
+        {
+            let mut utterance = state.utterance_buffer.lock().unwrap();
+            let maximum = config.sample_rate.0 as usize * MAX_UTTERANCE_SECONDS;
+            let remaining = maximum.saturating_sub(utterance.len());
+            utterance.extend_from_slice(&mono[..mono.len().min(remaining)]);
         }
 
         // 2) Compute per-bucket RMS levels.  We chunk the buffer into

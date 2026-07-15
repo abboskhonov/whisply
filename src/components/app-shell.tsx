@@ -1,8 +1,6 @@
 import * as React from "react"
 import { useLocation } from "@tanstack/react-router"
 
-import { invoke } from "@tauri-apps/api/core"
-
 import { cn } from "@/lib/utils"
 import {
   SidebarInset,
@@ -10,8 +8,7 @@ import {
   SidebarTrigger,
 } from "@/components/ui/sidebar"
 import { AppSidebar } from "@/components/app-sidebar"
-import { useDictation, comboToShortcutString } from "@/hooks/use-dictation"
-import { isTauri } from "@/lib/tauri"
+import { useDictation } from "@/hooks/use-dictation"
 
 const ROUTE_TITLES: Record<string, string> = {
   "/": "Home",
@@ -86,22 +83,6 @@ export function Layout({
   // shortcut is re-registered on mount and the state is tracked in case
   // a future consumer wants to display an in-app status pill.
   useDictation()
-
-  // Re-register saved shortcut on mount
-  React.useEffect(() => {
-    if (!isTauri()) return
-
-    const saved = localStorage.getItem("whisply-shortcut")
-    if (!saved) return
-
-    try {
-      const combo = JSON.parse(saved)
-      const key = comboToShortcutString(combo)
-      void invoke("register_shortcut_evdev", { shortcutKey: key })
-    } catch {
-      // ignore corrupt localStorage
-    }
-  }, [])
 
   return (
     <SidebarProvider
