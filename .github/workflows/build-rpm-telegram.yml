@@ -1,0 +1,51 @@
+name: Build RPM and notify Telegram
+
+on:
+  push:
+    branches:
+      - master
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rpm-master
+  cancel-in-progress: false
+
+jobs:
+  build-and-send:
+    runs-on: [self-hosted, linux, x64, whisply-rpm]
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install frontend dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Build RPM
+        run: bun run tauri build --bundles rpm
+
+      - name: Send RPM to Telegram
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          test -n "$TELEGRAM_BOT_TOKEN"
+          test -n "$TELEGRAM_CHAT_ID"
+          rpm_file=$(find src-tauri/target/release/bundle/rpm -type f -name '*.rpm' -print -quit)
+          test -n "$rpm_file"
+          curl --fail --retry 3 --retry-all-errors \
+            --form "chat_id=$TELEGRAM_CHAT_ID" \
+            --form "document=@$rpm_file" \
+            --form "caption=Whisply RPM — ${GITHUB_SHA::7}" \
+            "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendDocument"
