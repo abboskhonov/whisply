@@ -2,11 +2,7 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
   "description": "Capability for the main window and the global recording overlay",
-  "windows": [
-    "main",
-    "recording_overlay",
-    "onboarding"
-  ],
+  "windows": ["main", "recording_overlay", "onboarding"],
   "permissions": [
     "core:default",
     "core:window:allow-set-position",

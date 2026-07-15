@@ -1,3 +1,4 @@
+import * as React from "react"
 import {
   BookmarkSimple,
   ChartLineUp,
@@ -8,6 +9,7 @@ import {
 } from "@phosphor-icons/react"
 import { Link, useMatchRoute } from "@tanstack/react-router"
 
+import { PREFERENCES_CHANGED_EVENT, showLogsInSidebar } from "@/lib/preferences"
 import { cn } from "@/lib/utils"
 import {
   SidebarContent,
@@ -41,14 +43,29 @@ const NAV_GROUPS: SidebarNavGroup[] = [
     label: "Main",
     items: [
       { label: "Home", to: "/", icon: House, tooltip: "Home" },
-      { label: "Insights", to: "/insights", icon: ChartLineUp, tooltip: "Insights" },
-      { label: "Dictionary", to: "/dictionary", icon: BookOpen, tooltip: "Dictionary" },
+      {
+        label: "Insights",
+        to: "/insights",
+        icon: ChartLineUp,
+        tooltip: "Insights",
+      },
+      {
+        label: "Dictionary",
+        to: "/dictionary",
+        icon: BookOpen,
+        tooltip: "Dictionary",
+      },
     ],
   },
   {
     label: "Library",
     items: [
-      { label: "Snippets", to: "/snippets", icon: BookmarkSimple, tooltip: "Snippets" },
+      {
+        label: "Snippets",
+        to: "/snippets",
+        icon: BookmarkSimple,
+        tooltip: "Snippets",
+      },
       { label: "Style", to: "/style", icon: PaintBrush, tooltip: "Style" },
     ],
   },
@@ -71,10 +88,23 @@ const NAV_ICON_CLASS =
 
 export function SidebarNav() {
   const matchRoute = useMatchRoute()
+  const [logsVisible, setLogsVisible] = React.useState(showLogsInSidebar)
+
+  React.useEffect(() => {
+    const syncLogsVisibility = () => setLogsVisible(showLogsInSidebar())
+    window.addEventListener(PREFERENCES_CHANGED_EVENT, syncLogsVisibility)
+    window.addEventListener("storage", syncLogsVisibility)
+    return () => {
+      window.removeEventListener(PREFERENCES_CHANGED_EVENT, syncLogsVisibility)
+      window.removeEventListener("storage", syncLogsVisibility)
+    }
+  }, [])
 
   return (
     <SidebarContent className="gap-1 px-2">
-      {NAV_GROUPS.map((group) => (
+      {NAV_GROUPS.filter(
+        (group) => group.label !== "Diagnostics" || logsVisible
+      ).map((group) => (
         <SidebarGroup key={group.label} className="p-0">
           {group.label ? (
             <SidebarGroupLabel className="px-2 text-[11px] font-medium tracking-wider text-muted-foreground/70 uppercase">

@@ -15,9 +15,14 @@ export function DictationQuerySynchronizer() {
     let unlisten: (() => void) | undefined
 
     void listen("whisply://dictation-result", () => {
-      void queryClient.invalidateQueries({
-        queryKey: dictationQueryKeys.root,
-      })
+      void Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: dictationQueryKeys.root,
+        }),
+        queryClient.invalidateQueries({
+          queryKey: dictationQueryKeys.snippets,
+        }),
+      ])
     }).then((stopListening) => {
       if (active) {
         unlisten = stopListening

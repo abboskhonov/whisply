@@ -78,6 +78,22 @@ pub fn finish(app: &AppHandle) -> Result<(), String> {
                 if !app.state::<DictationState>().is_current(generation) {
                     return Err("Dictation was cancelled".to_string());
                 }
+                let text = match app
+                    .state::<crate::snippets::SnippetStore>()
+                    .resolve_spoken_command(&text)
+                {
+                    Some(snippet) => {
+                        if let Err(error) = app
+                            .state::<crate::snippets::SnippetStore>()
+                            .mark_used(snippet.id)
+                        {
+                            log::error!("could not update snippet usage: {error}");
+                        }
+                        log::info!("expanded spoken snippet command: {}", snippet.name);
+                        snippet.body
+                    }
+                    None => text,
+                };
                 // Remove the overlay before injecting text. Even though the
                 // window is configured as non-focusable, hiding it gives GNOME
                 // a chance to restore the previous Telegram/editor focus if the

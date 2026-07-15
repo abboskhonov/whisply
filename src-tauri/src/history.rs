@@ -232,14 +232,14 @@ impl HistoryStore {
     }
 }
 
-fn database_path(app: &AppHandle) -> Result<PathBuf, String> {
+pub fn database_path(app: &AppHandle) -> Result<PathBuf, String> {
     app.path()
         .app_data_dir()
         .map(|path| path.join(DATABASE_FILE))
         .map_err(|error| format!("Could not resolve history database path: {error}"))
 }
 
-fn unix_timestamp_ms() -> Result<i64, String> {
+pub fn unix_timestamp_ms() -> Result<i64, String> {
     let timestamp = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_err(|error| format!("System clock is before the Unix epoch: {error}"))?

@@ -6,6 +6,7 @@ mod models;
 mod onboarding;
 mod overlay;
 mod shortcut;
+mod snippets;
 mod system;
 mod transcription;
 
@@ -49,7 +50,7 @@ fn external_navigation_plugin<R: tauri::Runtime>() -> tauri::plugin::TauriPlugin
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
+    let builder = tauri::Builder::default()
         .plugin(
             tauri_plugin_log::Builder::new()
                 .level(log::LevelFilter::Info)
@@ -62,7 +63,19 @@ pub fn run() {
         )
         .plugin(tauri_plugin_opener::init())
         .plugin(GlobalShortcutBuilder::new().build())
-        .plugin(external_navigation_plugin())
+        .plugin(external_navigation_plugin());
+
+    #[cfg(desktop)]
+    let builder = builder.plugin(tauri_plugin_single_instance::init(
+        |app, _args, _cwd| {
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.show();
+                let _ = window.set_focus();
+            }
+        },
+    ));
+
+    builder
         .manage(shortcut::ShortcutRegistry::new())
         .manage(shortcut::ListenerRunning::new())
         .manage(onboarding::OnboardingState::new())
@@ -86,10 +99,8 @@ pub fn run() {
                 ));
             }
 
-            // Safety net: if the recording_overlay webview wasn't created
-            // from the static config (e.g. dev process started before the
-            // config was updated), create it now so push-to-talk still
-            // works after a hot reload.
+            // The overlay is created dynamically so there is exactly one
+            // window owned by this process, including after a hot reload.
             let handle = app.handle().clone();
             overlay::ensure_window(&handle);
 
@@ -100,6 +111,7 @@ pub fn run() {
             onboarding_state.init(&handle);
             app.state::<models::ModelManager>().init(&handle);
             app.manage(history::HistoryStore::open(&handle)?);
+            app.manage(snippets::SnippetStore::open(&handle)?);
             onboarding::open_if_incomplete(&handle);
 
             // Tauri's Linux global-shortcut backend is X11-only. On Wayland,
@@ -149,6 +161,9 @@ pub fn run() {
             onboarding::open_onboarding_window,
             history::get_home_dashboard,
             history::get_insights_dashboard,
+            snippets::list_snippets,
+            snippets::add_snippet,
+            snippets::delete_snippet,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

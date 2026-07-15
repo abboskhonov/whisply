@@ -24,23 +24,6 @@
         "visible": false
       },
       {
-        "label": "recording_overlay",
-        "title": "Whisply Overlay",
-        "url": "overlay.html",
-        "width": 420,
-        "height": 120,
-        "decorations": false,
-        "transparent": true,
-        "alwaysOnTop": true,
-        "skipTaskbar": true,
-        "resizable": false,
-        "focus": false,
-        "focusable": false,
-        "visible": false,
-        "shadow": false,
-        "center": true
-      },
-      {
         "label": "onboarding",
         "title": "Welcome to Whisply",
         "url": "onboarding.html",

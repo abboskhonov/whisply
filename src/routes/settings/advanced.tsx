@@ -1,15 +1,10 @@
 import { createRoute } from "@tanstack/react-router"
 
-import { SettingsSubPage } from "@/pages/settings-sub-page"
+import { AdvancedSettingsPage } from "@/pages/settings/advanced-page"
 import { Route as settingsRoute } from "@/routes/settings"
 
 export const Route = createRoute({
   getParentRoute: () => settingsRoute,
   path: "/advanced",
-  component: () => (
-    <SettingsSubPage
-      title="Advanced"
-      description="Power user options, logs, and diagnostics."
-    />
-  ),
+  component: AdvancedSettingsPage,
 })

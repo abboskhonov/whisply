@@ -2,6 +2,11 @@ import { useEffect, useRef, useState } from "react"
 import { emit, listen } from "@tauri-apps/api/event"
 import { invoke } from "@tauri-apps/api/core"
 
+import {
+  OVERLAY_THEME_CHANGED_EVENT,
+  overlayTheme,
+  type OverlayTheme,
+} from "@/lib/preferences"
 import "./overlay.css"
 
 type OverlayState = "idle" | "recording" | "transcribing" | "denied"
@@ -23,6 +28,7 @@ export function OverlayApp() {
   const [elapsed, setElapsed] = useState(0)
   const [shortcutKey, setShortcutKey] = useState("")
   const [errorMsg, setErrorMsg] = useState("")
+  const [theme, setTheme] = useState<OverlayTheme>(overlayTheme)
   const elapsedStart = useRef<number | null>(null)
 
   useEffect(() => {
@@ -59,6 +65,12 @@ export function OverlayApp() {
       )
       unsubs.push(micLevelUnlisten)
 
+      const themeUnlisten = await listen<OverlayTheme>(
+        OVERLAY_THEME_CHANGED_EVENT,
+        (event) => setTheme(event.payload)
+      )
+      unsubs.push(themeUnlisten)
+
       await invoke("overlay_ready")
     })().catch((error) => {
       console.error("Failed to initialize overlay listeners:", error)
@@ -92,6 +104,7 @@ export function OverlayApp() {
       className="ov-stage"
       data-state={state}
       data-visible={visible ? "true" : "false"}
+      data-theme={theme}
     >
       <div
         className={`ov-pill ${visible ? "is-open" : "is-closed"}`}

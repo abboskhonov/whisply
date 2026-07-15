@@ -1,152 +1,159 @@
-import {
-  Check,
-  MagicWand,
-  PaintBrush,
-  PencilSimple,
-  Plus,
-} from "@phosphor-icons/react"
+import * as React from "react"
+import { Check, Waveform } from "@phosphor-icons/react"
+import { emit } from "@tauri-apps/api/event"
 
 import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
 import {
-  EmptyState,
-  List,
-  ListContent,
-  ListItem,
-  ListLeading,
-  ListRow,
-  ListSubtitle,
-  ListTitle,
-  ListTrailing,
   PageHeader,
   PageShell,
   Section,
   SectionHeader,
 } from "@/components/page"
+import {
+  OVERLAY_THEME_CHANGED_EVENT,
+  overlayTheme,
+  setOverlayTheme,
+  type OverlayTheme,
+} from "@/lib/preferences"
+import { isTauri } from "@/lib/tauri"
+import { cn } from "@/lib/utils"
 
-const PRESETS: Array<{
-  id: string
+type ThemeOption = {
+  id: OverlayTheme
   name: string
   description: string
-  applied: number
-  active?: boolean
-}> = [
+  previewClass: string
+  accentClass: string
+}
+
+const OVERLAY_THEMES: ThemeOption[] = [
   {
-    id: "p-1",
-    name: "Clean verbatim",
-    description:
-      "Removes filler words (um, uh), fixes punctuation, keeps the original structure.",
-    applied: 64,
-    active: true,
+    id: "graphite",
+    name: "Graphite",
+    description: "A quiet dark surface with a warm recording signal.",
+    previewClass: "bg-[#17191f] text-white",
+    accentClass: "bg-rose-400",
   },
   {
-    id: "p-2",
-    name: "Meeting notes",
-    description:
-      "Summarises into agenda items, decisions, action items, and follow-ups.",
-    applied: 41,
+    id: "signal",
+    name: "Signal",
+    description: "A cool midnight theme with a crisp blue waveform.",
+    previewClass: "bg-[#0e1728] text-white",
+    accentClass: "bg-sky-400",
   },
   {
-    id: "p-3",
-    name: "Casual",
-    description:
-      "Keeps the speaker's voice, light punctuation, contractions and hedges intact.",
-    applied: 12,
-  },
-  {
-    id: "p-4",
-    name: "Formal",
-    description:
-      "Tightens sentences, removes false starts, formats as flowing prose.",
-    applied: 7,
-  },
-  {
-    id: "p-5",
-    name: "Custom — blog",
-    description:
-      "Long-form, paragraph-per-idea, friendly but precise. Built from a sample post.",
-    applied: 3,
+    id: "ember",
+    name: "Ember",
+    description: "A softened black theme with an amber recording signal.",
+    previewClass: "bg-[#1c1713] text-white",
+    accentClass: "bg-amber-400",
   },
 ]
 
 export function StylePage() {
+  const [selectedTheme, setSelectedTheme] =
+    React.useState<OverlayTheme>(overlayTheme)
+
+  const selectTheme = async (theme: OverlayTheme) => {
+    setSelectedTheme(theme)
+    setOverlayTheme(theme)
+    if (isTauri()) {
+      try {
+        await emit(OVERLAY_THEME_CHANGED_EVENT, theme)
+      } catch (cause) {
+        console.error("Failed to update overlay theme:", cause)
+      }
+    }
+  }
+
   return (
     <PageShell>
       <PageHeader
-        title="Style"
-        description="How Whisply cleans up and formats your transcriptions."
-        actions={
-          <Button variant="outline" size="sm">
-            <Plus weight="bold" className="size-3.5" />
-            New style
-          </Button>
-        }
+        title="Overlay style"
+        description="Choose how the recording indicator looks when you use your dictation shortcut."
       />
 
       <Section>
         <SectionHeader
-          title="Presets"
-          description="Pick one to apply to all new transcriptions."
+          title="Themes"
+          description="Graphite is the default. Your choice is used for every new dictation."
         />
-        {PRESETS.length > 0 ? (
-          <List>
-            {PRESETS.map((p) => (
-              <ListItem key={p.id}>
-                <ListRow>
-                  <ListLeading
-                    tone={p.active ? "accent" : "default"}
-                    icon={
-                      p.active ? (
-                        <Check weight="bold" className="size-4" />
-                      ) : (
-                        <PaintBrush weight="regular" className="size-4" />
-                      )
-                    }
+        <div className="grid gap-3 md:grid-cols-3">
+          {OVERLAY_THEMES.map((theme) => {
+            const selected = theme.id === selectedTheme
+            return (
+              <button
+                key={theme.id}
+                type="button"
+                aria-pressed={selected}
+                onClick={() => void selectTheme(theme.id)}
+                className={cn(
+                  "flex min-h-52 flex-col rounded-xl border p-3 text-left transition-colors outline-none",
+                  "hover:bg-muted/40 focus-visible:ring-2 focus-visible:ring-ring",
+                  selected
+                    ? "border-primary bg-primary/[0.04]"
+                    : "border-border/60 bg-card/40"
+                )}
+              >
+                <div
+                  className={cn(
+                    "flex h-20 items-center gap-2 rounded-lg px-3 shadow-sm",
+                    theme.previewClass
+                  )}
+                >
+                  <span
+                    className={cn("size-2 rounded-full", theme.accentClass)}
                   />
-                  <ListContent>
-                    <ListTitle className="flex items-center gap-2">
-                      {p.name}
-                      {p.active ? (
-                        <Badge
-                          variant="secondary"
-                          className="rounded-full bg-primary/10 px-2 py-0 text-[10.5px] font-medium tracking-wide text-primary uppercase"
-                        >
-                          Active
-                        </Badge>
-                      ) : null}
-                    </ListTitle>
-                    <ListSubtitle>{p.description}</ListSubtitle>
-                  </ListContent>
-                  <ListTrailing className="gap-3">
-                    <span className="text-[11px] tabular-nums text-muted-foreground">
-                      {p.applied}× applied
-                    </span>
-                    <Button
-                      variant="ghost"
-                      size="icon-xs"
-                      className="text-muted-foreground opacity-0 transition-opacity group-hover/item:opacity-100"
-                      aria-label={`Edit ${p.name}`}
+                  <span className="text-xs font-semibold">Listening</span>
+                  <span className="text-[10px] text-white/55">0:08</span>
+                  <span className="ml-auto flex h-5 items-center gap-0.5">
+                    {[8, 14, 20, 11, 17, 8, 15].map((height, index) => (
+                      <span
+                        key={index}
+                        className={cn("w-0.5 rounded-full", theme.accentClass)}
+                        style={{ height }}
+                      />
+                    ))}
+                  </span>
+                </div>
+                <div className="mt-4 flex items-center gap-2">
+                  <span className="text-sm font-medium text-foreground">
+                    {theme.name}
+                  </span>
+                  {theme.id === "graphite" ? (
+                    <Badge
+                      variant="secondary"
+                      className="rounded-full px-2 py-0 text-[10px]"
                     >
-                      <PencilSimple className="size-3.5" />
-                    </Button>
-                  </ListTrailing>
-                </ListRow>
-              </ListItem>
-            ))}
-          </List>
-        ) : (
-          <EmptyState
-            icon={<MagicWand weight="regular" className="size-5" />}
-            title="No styles yet"
-            description="Create a style to clean up your transcriptions automatically."
-            action={
-              <Button size="sm">
-                <Plus weight="bold" className="size-3.5" />
-                New style
-              </Button>
-            }
-          />
-        )}
+                      Default
+                    </Badge>
+                  ) : null}
+                  {selected ? (
+                    <Check
+                      weight="bold"
+                      className="ml-auto size-4 text-primary"
+                    />
+                  ) : null}
+                </div>
+                <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                  {theme.description}
+                </p>
+              </button>
+            )
+          })}
+        </div>
+      </Section>
+
+      <Section>
+        <div className="flex items-center gap-3 rounded-lg border border-border/60 bg-card/40 px-4 py-3">
+          <span className="grid size-9 shrink-0 place-items-center rounded-md bg-muted text-muted-foreground">
+            <Waveform weight="regular" className="size-4" />
+          </span>
+          <p className="text-xs text-muted-foreground">
+            The overlay appears only while recording, transcribing, or showing
+            an error.
+          </p>
+        </div>
       </Section>
     </PageShell>
   )
