@@ -78,6 +78,12 @@ pub fn finish(app: &AppHandle) -> Result<(), String> {
                 if !app.state::<DictationState>().is_current(generation) {
                     return Err("Dictation was cancelled".to_string());
                 }
+                // Remove the overlay before injecting text. Even though the
+                // window is configured as non-focusable, hiding it gives GNOME
+                // a chance to restore the previous Telegram/editor focus if the
+                // compositor activated it while it was shown.
+                crate::overlay::hide(&app);
+                std::thread::sleep(std::time::Duration::from_millis(150));
                 let insertion = crate::input::insert_text_locally(&app, &text)?;
                 Ok(DictationResult {
                     text,
@@ -95,6 +101,14 @@ pub fn finish(app: &AppHandle) -> Result<(), String> {
                     result.transcription_duration_ms,
                     result.insertion_method
                 );
+                if let Err(error) = app
+                    .state::<crate::history::HistoryStore>()
+                    .record_dictation(&result)
+                {
+                    // Saving history must not make a successfully inserted
+                    // dictation appear to have failed.
+                    log::error!("could not save dictation history: {error}");
+                }
                 let _ = app.emit("whisply://dictation-result", &result);
                 std::thread::sleep(std::time::Duration::from_millis(250));
                 if app.state::<DictationState>().is_current(generation) {

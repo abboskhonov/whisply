@@ -1,7 +1,4 @@
-import {
-  createHashHistory,
-  createRouter,
-} from "@tanstack/react-router"
+import { createHashHistory, createRouter } from "@tanstack/react-router"
 
 import { Route as rootRoute } from "@/routes/__root"
 import { Route as dictionaryRoute } from "@/routes/dictionary"
@@ -16,6 +13,7 @@ import { Route as styleRoute } from "@/routes/style"
 import { Route as settingsIndexRoute } from "@/routes/settings/index"
 import { Route as settingsGeneralRoute } from "@/routes/settings/general"
 import { Route as settingsDictationRoute } from "@/routes/settings/dictation"
+import { Route as settingsModelsRoute } from "@/routes/settings/models"
 import { Route as settingsShortcutRoute } from "@/routes/settings/shortcut"
 import { Route as settingsTextInsertionRoute } from "@/routes/settings/text-insertion"
 import { Route as settingsAppearanceRoute } from "@/routes/settings/appearance"
@@ -33,6 +31,7 @@ const routeTree = rootRoute.addChildren([
     settingsIndexRoute,
     settingsGeneralRoute,
     settingsDictationRoute,
+    settingsModelsRoute,
     settingsShortcutRoute,
     settingsTextInsertionRoute,
     settingsAppearanceRoute,

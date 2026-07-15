@@ -4,46 +4,22 @@ import {
   Check,
   Hand,
   ToggleLeft,
-  CornersOut,
   Warning,
 } from "@phosphor-icons/react"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import { isTauri } from "@/lib/tauri"
 import { invoke } from "@tauri-apps/api/core"
-
-type Modifier = "Super" | "Ctrl" | "Alt" | "Shift"
-
-type KeyCombo = {
-  modifiers: Modifier[]
-  key: string
-}
-
-type TriggerMode = "hold" | "toggle"
-
-const DEFAULT_COMBO: KeyCombo = {
-  modifiers: ["Super"],
-  key: "V",
-}
+import { ShortcutRecorder } from "@/components/shortcut-recorder"
+import {
+  comboToShortcutString,
+  DEFAULT_SHORTCUT,
+  shortcutValidationError,
+  type ShortcutConfig,
+  type TriggerMode,
+} from "@/lib/shortcuts"
 
 const DEFAULT_MODE: TriggerMode = "hold"
-
-const MODIFIER_LABELS: Record<string, string> = {
-  Super: "⊞ Win",
-  Ctrl: "Ctrl",
-  Alt: "Alt",
-  Shift: "Shift",
-}
-
-function comboToString(combo: KeyCombo): string {
-  const modMap: Record<string, string> = {
-    Super: "Super",
-    Ctrl: "Ctrl",
-    Alt: "Alt",
-    Shift: "Shift",
-  }
-  return [...combo.modifiers.map((m) => modMap[m] ?? m), combo.key].join("+")
-}
 
 type StepKeybindingsProps = {
   onNext: () => void
@@ -73,59 +49,30 @@ const MODE_OPTIONS: ModeOption[] = [
     description:
       "Press once to start recording, press again to stop. Best for long dictation sessions.",
     icon: <ToggleLeft weight="regular" className="size-4" />,
-    example: "Tap → record → tap → transcribe. Your hands stay on the keyboard.",
+    example:
+      "Tap → record → tap → transcribe. Your hands stay on the keyboard.",
   },
 ]
 
 export function StepKeybindings({ onNext, onBack }: StepKeybindingsProps) {
-  const [combo, setCombo] = React.useState<KeyCombo>(DEFAULT_COMBO)
+  const [combo, setCombo] = React.useState<ShortcutConfig>(DEFAULT_SHORTCUT)
   const [mode, setMode] = React.useState<TriggerMode>(DEFAULT_MODE)
-  const [listening, setListening] = React.useState(false)
   const [saved, setSaved] = React.useState(false)
   const [registering, setRegistering] = React.useState(false)
-  const [registrationError, setRegistrationError] = React.useState<string | null>(null)
-
-  const handleStartListening = () => {
-    setListening(true)
-    setSaved(false)
-    setRegistrationError(null)
-  }
-
-  React.useEffect(() => {
-    if (!listening) return
-
-    function handleKeyDown(e: KeyboardEvent) {
-      e.preventDefault()
-      e.stopPropagation()
-
-      const MODIFIER_KEYS = new Set(["Control", "Alt", "Shift", "Meta"])
-      if (MODIFIER_KEYS.has(e.key)) return
-
-      const mods: Modifier[] = []
-      if (e.metaKey) mods.push("Super")
-      if (e.ctrlKey) mods.push("Ctrl")
-      if (e.altKey) mods.push("Alt")
-      if (e.shiftKey) mods.push("Shift")
-
-      const key = e.key.length === 1 ? e.key.toUpperCase() : e.key
-
-      if (mods.length > 0) {
-        setCombo({ modifiers: mods, key })
-        setListening(false)
-      }
-    }
-
-    window.addEventListener("keydown", handleKeyDown)
-    return () => window.removeEventListener("keydown", handleKeyDown)
-  }, [listening])
+  const [registrationError, setRegistrationError] = React.useState<
+    string | null
+  >(null)
 
   const handleSave = async () => {
     setRegistering(true)
     setRegistrationError(null)
 
     try {
+      const validationError = shortcutValidationError(combo)
+      if (validationError) throw new Error(validationError)
+
       if (isTauri()) {
-        const shortcutStr = comboToString(combo)
+        const shortcutStr = comboToShortcutString(combo)
         await invoke("register_shortcut_evdev", {
           shortcutKey: shortcutStr,
           mode,
@@ -166,59 +113,15 @@ export function StepKeybindings({ onNext, onBack }: StepKeybindingsProps) {
             Key combination
           </h3>
         </div>
-        <button
-          type="button"
-          onClick={handleStartListening}
-          className={cn(
-            "group flex items-center justify-between gap-4 rounded-lg border bg-card/40 px-4 py-4 text-left transition-all",
-            listening
-              ? "border-primary/50 bg-primary/5 shadow-lg shadow-primary/10"
-              : "border-border/60 hover:border-border hover:bg-card/60"
-          )}
-        >
-          <div className="flex items-center gap-3">
-            <span
-              className={cn(
-                "grid size-9 place-items-center rounded-md transition-colors",
-                listening
-                  ? "bg-primary/10 text-primary"
-                  : "bg-muted text-muted-foreground"
-              )}
-            >
-              <CornersOut
-                weight="regular"
-                className={cn(
-                  "size-4 transition-colors",
-                  listening && "text-primary"
-                )}
-              />
-            </span>
-            <div>
-              <p className="text-[13.5px] font-medium text-foreground">
-                {listening ? "Listening for keys…" : "Click to record a shortcut"}
-              </p>
-              <p className="text-xs text-muted-foreground">
-                {listening
-                  ? "Press a modifier + a key together"
-                  : "Pick something you won't hit by accident"}
-              </p>
-            </div>
-          </div>
-          <div className="flex shrink-0 items-center gap-1.5">
-            {combo.modifiers.map((m) => (
-              <kbd
-                key={m}
-                className="inline-flex h-7 min-w-[2rem] items-center justify-center rounded-md border border-border bg-muted px-2 text-xs font-medium text-foreground shadow-xs"
-              >
-                {MODIFIER_LABELS[m] ?? m}
-              </kbd>
-            ))}
-            <span className="text-xs text-muted-foreground">+</span>
-            <kbd className="inline-flex h-7 min-w-[2rem] items-center justify-center rounded-md border border-border bg-muted px-2 text-xs font-medium text-foreground shadow-xs">
-              {combo.key}
-            </kbd>
-          </div>
-        </button>
+        <ShortcutRecorder
+          value={combo}
+          onChange={(next) => {
+            setCombo(next)
+            setSaved(false)
+            setRegistrationError(null)
+          }}
+          disabled={registering}
+        />
       </div>
 
       {/* Group: trigger mode (list) */}
@@ -280,7 +183,7 @@ export function StepKeybindings({ onNext, onBack }: StepKeybindingsProps) {
                         {opt.label}
                       </p>
                       {selected ? (
-                        <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wider text-primary">
+                        <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium tracking-wider text-primary uppercase">
                           <Check weight="bold" className="size-2.5" />
                           Selected
                         </span>
@@ -314,7 +217,7 @@ export function StepKeybindings({ onNext, onBack }: StepKeybindingsProps) {
         <Button variant="ghost" onClick={onBack}>
           Back
         </Button>
-        <Button onClick={handleSave} disabled={listening || registering}>
+        <Button onClick={handleSave} disabled={registering}>
           {registering ? (
             "Registering…"
           ) : saved ? (

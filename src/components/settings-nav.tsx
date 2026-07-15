@@ -1,4 +1,5 @@
 import {
+  Cpu,
   Cursor,
   GearSix,
   Info,
@@ -31,11 +32,37 @@ type SettingsNavItem = {
 
 const SETTINGS_NAV_ITEMS: SettingsNavItem[] = [
   { id: "general", label: "General", to: "/settings/general", icon: GearSix },
-  { id: "dictation", label: "Dictation", to: "/settings/dictation", icon: Microphone },
-  { id: "shortcut", label: "Shortcut", to: "/settings/shortcut", icon: Keyboard },
-  { id: "text-insertion", label: "Text insertion", to: "/settings/text-insertion", icon: Cursor },
-  { id: "appearance", label: "Appearance", to: "/settings/appearance", icon: Palette },
-  { id: "advanced", label: "Advanced", to: "/settings/advanced", icon: Sliders },
+  {
+    id: "dictation",
+    label: "Dictation",
+    to: "/settings/dictation",
+    icon: Microphone,
+  },
+  { id: "models", label: "Models", to: "/settings/models", icon: Cpu },
+  {
+    id: "shortcut",
+    label: "Shortcut",
+    to: "/settings/shortcut",
+    icon: Keyboard,
+  },
+  {
+    id: "text-insertion",
+    label: "Text insertion",
+    to: "/settings/text-insertion",
+    icon: Cursor,
+  },
+  {
+    id: "appearance",
+    label: "Appearance",
+    to: "/settings/appearance",
+    icon: Palette,
+  },
+  {
+    id: "advanced",
+    label: "Advanced",
+    to: "/settings/advanced",
+    icon: Sliders,
+  },
   { id: "about", label: "About", to: "/settings/about", icon: Info },
 ]
 

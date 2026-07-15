@@ -4,6 +4,7 @@ use serde::Serialize;
 use std::io::Write;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 use std::time::Duration;
 use tauri::{AppHandle, Manager};
@@ -14,6 +15,7 @@ use evdev::{uinput::VirtualDevice, AttributeSet, InputEvent, KeyCode};
 pub struct InputState {
     enigo: Mutex<Option<Enigo>>,
     clipboard: Mutex<Option<Clipboard>>,
+    inserting: AtomicBool,
     #[cfg(target_os = "linux")]
     uinput: Mutex<Option<VirtualDevice>>,
 }
@@ -23,6 +25,7 @@ impl InputState {
         Self {
             enigo: Mutex::new(None),
             clipboard: Mutex::new(None),
+            inserting: AtomicBool::new(false),
             #[cfg(target_os = "linux")]
             uinput: Mutex::new(None),
         }
@@ -73,20 +76,37 @@ fn ydotool_available() -> bool {
 }
 
 #[cfg(target_os = "linux")]
-fn paste_with_ydotool() -> Result<(), String> {
+fn type_with_ydotool(text: &str) -> Result<(), String> {
     let socket = ydotool_socket().ok_or_else(|| "ydotool socket was not found".to_string())?;
-    let status = Command::new("ydotool")
-        .args(["key", "29:1", "47:1", "47:0", "29:0"])
+    let mut child = Command::new("ydotool")
+        .args(["type", "--key-delay=2", "--key-hold=2", "--file=-"])
         .env("YDOTOOL_SOCKET", socket)
+        .stdin(Stdio::piped())
         .stdout(Stdio::null())
         .stderr(Stdio::piped())
-        .status()
+        .spawn()
         .map_err(|error| format!("Could not run ydotool: {error}"))?;
-    if status.success() {
+    child
+        .stdin
+        .take()
+        .ok_or_else(|| "ydotool stdin was unavailable".to_string())?
+        .write_all(text.as_bytes())
+        .map_err(|error| format!("Could not send text to ydotool: {error}"))?;
+    let output = child
+        .wait_with_output()
+        .map_err(|error| format!("Could not wait for ydotool: {error}"))?;
+    if output.status.success() {
         Ok(())
     } else {
-        Err(format!("ydotool exited with {status}"))
+        Err(format!(
+            "ydotool failed: {}",
+            String::from_utf8_lossy(&output.stderr).trim()
+        ))
     }
+}
+
+pub fn is_inserting(app: &AppHandle) -> bool {
+    app.state::<InputState>().inserting.load(Ordering::SeqCst)
 }
 
 #[cfg(target_os = "linux")]
@@ -246,6 +266,24 @@ pub fn insert_text_locally(app: &AppHandle, text: &str) -> Result<InsertionResul
 
     initialize_input(app.clone())?;
     let state = app.state::<InputState>();
+
+    // On Wayland, type the transcript directly. This works in terminals as
+    // well as regular text fields; terminals intentionally do not bind paste
+    // to Ctrl+V, which made the clipboard path report false success.
+    #[cfg(target_os = "linux")]
+    if ydotool_available() {
+        state.inserting.store(true, Ordering::SeqCst);
+        let result = type_with_ydotool(text);
+        state.inserting.store(false, Ordering::SeqCst);
+        result?;
+        let method = "ydotool-type".to_string();
+        log::info!(
+            "typed {} transcript characters via {method}",
+            text.chars().count()
+        );
+        return Ok(InsertionResult { method });
+    }
+
     let clipboard_method = {
         #[cfg(target_os = "linux")]
         if set_wayland_clipboard(text).is_ok() {
@@ -280,17 +318,6 @@ pub fn insert_text_locally(app: &AppHandle, text: &str) -> Result<InsertionResul
 
     #[cfg(target_os = "linux")]
     {
-        if ydotool_available() {
-            match paste_with_ydotool() {
-                Ok(()) => {
-                    let method = format!("{clipboard_method}+ydotool");
-                    log::info!("inserted {} transcript characters via {method}", text.chars().count());
-                    return Ok(InsertionResult { method });
-                }
-                Err(error) => log::warn!("{error}; trying uinput fallback"),
-            }
-        }
-
         let mut uinput = state.uinput.lock().map_err(|error| error.to_string())?;
         if let Some(device) = uinput.as_mut() {
             paste_with_uinput(device)?;

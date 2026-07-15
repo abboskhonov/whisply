@@ -1,5 +1,6 @@
 import {
   CaretRight,
+  Cpu,
   Cursor,
   GearSix,
   Info,
@@ -35,7 +36,13 @@ const SETTINGS_CATEGORIES = [
     id: "dictation",
     label: "Dictation",
     icon: Microphone,
-    description: "Recording, language, and voice.",
+    description: "Microphone access and recording input.",
+  },
+  {
+    id: "models",
+    label: "Models",
+    icon: Cpu,
+    description: "Local speech models for transcription.",
   },
   {
     id: "shortcut",

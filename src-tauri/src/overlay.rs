@@ -70,6 +70,9 @@ fn init_layer_shell(_window: &tauri::WebviewWindow) {}
 /// always-on-top behaviour.
 pub fn ensure_window(app: &AppHandle) {
     if let Some(window) = app.get_webview_window(OVERLAY_LABEL) {
+        if let Err(error) = window.set_focusable(false) {
+            log::warn!("could not make recording overlay non-focusable: {error}");
+        }
         init_layer_shell(&window);
         return;
     }
@@ -195,12 +198,14 @@ pub fn show(app: &AppHandle, state: &str, device: &str, shortcut: &str) {
         // Still show the window even if the webview isn't ready.
         // The event will be re-emitted when mark_ready fires.
         if let Some(window) = app.get_webview_window(OVERLAY_LABEL) {
+            let _ = window.set_focusable(false);
             let _ = window.show();
         }
         return;
     }
 
     if let Some(window) = app.get_webview_window(OVERLAY_LABEL) {
+        let _ = window.set_focusable(false);
         let _ = window.show();
     }
 
@@ -252,6 +257,7 @@ pub fn emit_error(app: &AppHandle, message: &str) {
     ensure_window(app);
     position_overlay(app);
     if let Some(window) = app.get_webview_window(OVERLAY_LABEL) {
+        let _ = window.set_focusable(false);
         let _ = window.show();
     }
 

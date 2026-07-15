@@ -7,26 +7,21 @@ import {
   type BrowserMicController,
   type SamplesEvent,
 } from "@/lib/audio"
+import { comboToShortcutString, type ShortcutConfig } from "@/lib/shortcuts"
 
 export type DictationState = "idle" | "recording" | "transcribing" | "denied"
 
-export type ShortcutConfig = {
-  modifiers: string[]
-  key: string
-}
+let registeredShortcutSignature: string | null = null
 
-/// Convert our internal combo format to a shortcut string.
-/// e.g. { modifiers: ["Ctrl"], key: "Y" } → "Ctrl+Y"
-export function comboToShortcutString(combo: ShortcutConfig): string {
-  const modMap: Record<string, string> = {
-    Super: "Super",
-    Ctrl: "Ctrl",
-    Alt: "Alt",
-    Shift: "Shift",
+function readSavedShortcutKey(): string {
+  try {
+    const saved = localStorage.getItem("whisply-shortcut")
+    return saved
+      ? comboToShortcutString(JSON.parse(saved) as ShortcutConfig)
+      : ""
+  } catch {
+    return ""
   }
-  const parts = combo.modifiers.map((m) => modMap[m] ?? m)
-  parts.push(combo.key)
-  return parts.join("+")
 }
 
 type UseDictationOptions = {
@@ -56,7 +51,8 @@ export function useDictation(options: UseDictationOptions = {}) {
 
   const [state, setState] = React.useState<DictationState>("idle")
   const [error, setError] = React.useState<string | null>(null)
-  const [shortcutKey, setShortcutKey] = React.useState<string>("")
+  const [shortcutKey, setShortcutKey] =
+    React.useState<string>(readSavedShortcutKey)
   const [elapsed, setElapsed] = React.useState(0)
   const [device, setDevice] = React.useState<string>("")
   const browserMicRef = React.useRef<BrowserMicController | null>(null)
@@ -70,24 +66,39 @@ export function useDictation(options: UseDictationOptions = {}) {
     const unsubs: Array<() => void> = []
     let mounted = true
 
-    // Re-register any persisted shortcut so the rdev listener picks it
-    // up on app start (the listener is already running in Rust setup).
+    // Several screens observe dictation through this hook. Register the saved
+    // shortcut once per frontend load instead of once per hook instance.
     const saved = localStorage.getItem("whisply-shortcut")
     if (saved) {
       try {
         const combo = JSON.parse(saved) as ShortcutConfig
         const key = comboToShortcutString(combo)
-        setShortcutKey(key)
         const mode = localStorage.getItem("whisply-trigger-mode") || "hold"
-        invoke("register_shortcut_evdev", { shortcutKey: key, mode }).catch(
-          (err) => {
-            console.error("register_shortcut_evdev failed:", err)
-          }
-        )
+        const signature = `${key}:${mode}`
+        if (registeredShortcutSignature !== signature) {
+          registeredShortcutSignature = signature
+          invoke("register_shortcut_evdev", { shortcutKey: key, mode }).catch(
+            (err) => {
+              registeredShortcutSignature = null
+              console.error("register_shortcut_evdev failed:", err)
+            }
+          )
+        }
       } catch {
-        // ignore corrupt localStorage
+        // Ignore corrupt localStorage.
       }
     }
+
+    const handleShortcutChanged = (event: Event) => {
+      const detail = (
+        event as CustomEvent<{ shortcutKey: string; mode: string }>
+      ).detail
+      if (detail?.shortcutKey) {
+        registeredShortcutSignature = `${detail.shortcutKey}:${detail.mode}`
+        setShortcutKey(detail.shortcutKey)
+      }
+    }
+    window.addEventListener("whisply-shortcut-changed", handleShortcutChanged)
 
     ;(async () => {
       const u1 = await listen<{
@@ -118,6 +129,10 @@ export function useDictation(options: UseDictationOptions = {}) {
 
     return () => {
       mounted = false
+      window.removeEventListener(
+        "whisply-shortcut-changed",
+        handleShortcutChanged
+      )
       unsubs.forEach((u) => u())
     }
   }, [])
@@ -185,15 +200,12 @@ export function useDictation(options: UseDictationOptions = {}) {
     }
   }, [])
 
-  const registerShortcut = React.useCallback(
-    async (combo: ShortcutConfig) => {
-      if (!isTauri()) return
-      const shortcutStr = comboToShortcutString(combo)
-      setShortcutKey(shortcutStr)
-      await invoke("register_shortcut_evdev", { shortcutKey: shortcutStr })
-    },
-    []
-  )
+  const registerShortcut = React.useCallback(async (combo: ShortcutConfig) => {
+    if (!isTauri()) return
+    const shortcutStr = comboToShortcutString(combo)
+    setShortcutKey(shortcutStr)
+    await invoke("register_shortcut_evdev", { shortcutKey: shortcutStr })
+  }, [])
 
   return {
     state,

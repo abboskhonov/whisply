@@ -1,10 +1,24 @@
-import { ArrowsClockwise, Waveform } from "@phosphor-icons/react"
+import * as React from "react"
+import { ArrowsClockwise, Bell, Check, Waveform } from "@phosphor-icons/react"
 import { invoke } from "@tauri-apps/api/core"
 
 import { Button } from "@/components/ui/button"
 import { PageShell, PageHeader, Section } from "@/components/page"
 
 export function GeneralSettingsPage() {
+  const [notificationPermission, setNotificationPermission] = React.useState<
+    NotificationPermission | "unavailable"
+  >(() =>
+    typeof Notification === "undefined"
+      ? "unavailable"
+      : Notification.permission
+  )
+
+  const requestNotifications = async () => {
+    if (typeof Notification === "undefined") return
+    setNotificationPermission(await Notification.requestPermission())
+  }
+
   const handleRerunWizard = async () => {
     // `reset_onboarding` clears the persisted "complete" flag in Rust
     // and opens the small onboarding window. The wizard is no longer
@@ -18,10 +32,42 @@ export function GeneralSettingsPage() {
 
   return (
     <PageShell>
-      <PageHeader
-        title="General"
-        description="App preferences and defaults."
-      />
+      <PageHeader title="General" description="App preferences and defaults." />
+
+      <Section>
+        <div className="flex items-center gap-4 rounded-lg border border-border/60 bg-card/40 px-5 py-4">
+          <div className="grid size-10 shrink-0 place-items-center rounded-lg bg-muted text-muted-foreground">
+            <Bell weight="fill" className="size-5 text-primary" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-medium text-foreground">
+              Desktop notifications
+            </p>
+            <p className="text-xs text-muted-foreground">
+              {notificationPermission === "granted"
+                ? "Whisply can show recording and transcription updates."
+                : notificationPermission === "denied"
+                  ? "Notifications are blocked by your system."
+                  : notificationPermission === "unavailable"
+                    ? "Notifications are not available in this environment."
+                    : "Allow notifications for recording and transcription updates."}
+            </p>
+          </div>
+          {notificationPermission === "granted" ? (
+            <span className="inline-flex items-center gap-1 text-xs font-medium text-success">
+              <Check weight="bold" className="size-3.5" /> Allowed
+            </span>
+          ) : notificationPermission !== "unavailable" ? (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => void requestNotifications()}
+            >
+              Allow
+            </Button>
+          ) : null}
+        </div>
+      </Section>
 
       <Section>
         <div className="rounded-lg border border-border/60 bg-card/40">
@@ -30,7 +76,9 @@ export function GeneralSettingsPage() {
               <Waveform weight="fill" className="size-5 text-primary" />
             </div>
             <div className="min-w-0 flex-1">
-              <p className="text-sm font-medium text-foreground">Setup wizard</p>
+              <p className="text-sm font-medium text-foreground">
+                Setup wizard
+              </p>
               <p className="text-xs text-muted-foreground">
                 Re-run the initial setup to reconfigure permissions, shortcuts,
                 and system checks.

@@ -1,108 +1,115 @@
-import {
-  ChatCircle,
-  Code,
-  EnvelopeSimple,
-  FileText,
-  Globe,
-  Info,
-  Monitor,
-  Notebook,
-} from "@phosphor-icons/react"
+import { Monitor } from "@phosphor-icons/react"
 
-import { Button } from "@/components/ui/button"
 import { PageHeader, PageShell, Section } from "@/components/page"
-import { StatCard, StatCardGauge, StatGrid } from "@/components/stats"
+import { StatCard, StatGrid } from "@/components/stats"
 import { StreakHeatmap } from "@/components/streak-heatmap"
+import {
+  type InsertionMethodUsage,
+  useInsightsDashboard,
+} from "@/hooks/use-insights-dashboard"
 import { cn } from "@/lib/utils"
 
-const DICTATION_USAGE = [
-  { id: "email", label: "Email", icon: EnvelopeSimple, count: 45, share: 35 },
-  { id: "docs", label: "Documents", icon: FileText, count: 28, share: 22 },
-  { id: "chat", label: "Chat", icon: ChatCircle, count: 20, share: 16 },
-  { id: "code", label: "Code", icon: Code, count: 15, share: 12 },
-  { id: "notes", label: "Notes", icon: Notebook, count: 12, share: 9 },
-  { id: "browser", label: "Browser", icon: Globe, count: 8, share: 6 },
-] as const
+const NUMBER_FORMATTER = new Intl.NumberFormat()
 
 function barColor(share: number): string {
-  if (share === 0) return "bg-teal-300 dark:bg-teal-900"
-  if (share < 15) return "bg-teal-400 dark:bg-teal-700"
-  if (share < 40) return "bg-teal-500 dark:bg-teal-600"
-  return "bg-teal-600 dark:bg-teal-500"
+  if (share === 0) return "bg-primary/20"
+  if (share < 15) return "bg-primary/40"
+  if (share < 40) return "bg-primary/60"
+  return "bg-primary"
 }
 
-function DictationUsageCard() {
+function InsertionMethodCard({
+  methods,
+  totalDictations,
+}: {
+  methods: InsertionMethodUsage[]
+  totalDictations: number
+}) {
   return (
     <div className="rounded-lg border border-border/60 bg-muted/50 p-5">
       <div className="mb-5 flex items-baseline justify-between gap-3">
-        <h3 className="text-xl font-semibold tracking-tight">
-          Dictation usage
-        </h3>
+        <h3 className="text-xl font-semibold tracking-tight">Insertion methods</h3>
         <span className="text-[10px] font-medium tracking-wider text-muted-foreground uppercase">
-          Total apps used | {DICTATION_USAGE.length}
+          {methods.length} {methods.length === 1 ? "method" : "methods"}
         </span>
       </div>
 
-      <div className="space-y-2">
-        {DICTATION_USAGE.map((item) => {
-          const Icon = item.icon
-          return (
-            <div key={item.id} className="flex items-center gap-3">
-              <div className="grid size-6 shrink-0 place-items-center text-muted-foreground">
-                <Icon weight="regular" className="size-4" />
-              </div>
-              <div className="flex-1">
-                <div className="h-5 overflow-hidden rounded bg-background/60">
-                  <div
-                    className={cn(
-                      "flex h-full items-center justify-end pr-2 transition-[width] duration-500",
-                      barColor(item.share)
-                    )}
-                    style={{ width: `${Math.max(item.share, 4)}%` }}
-                  >
-                    {item.share >= 10 ? (
-                      <span className="text-[10px] font-semibold tabular-nums text-white">
-                        {item.share}%
-                      </span>
-                    ) : null}
+      {methods.length === 0 ? (
+        <p className="py-8 text-center text-sm text-muted-foreground">
+          Complete a dictation to see how text was inserted.
+        </p>
+      ) : (
+        <div className="space-y-2">
+          {methods.map((method) => {
+            const share =
+              totalDictations === 0
+                ? 0
+                : Math.round((method.dictation_count / totalDictations) * 100)
+
+            return (
+              <div key={method.method} className="flex items-center gap-3">
+                <div className="grid size-6 shrink-0 place-items-center text-muted-foreground">
+                  <Monitor weight="regular" className="size-4" />
+                </div>
+                <div className="flex-1">
+                  <div className="h-5 overflow-hidden rounded bg-background/60">
+                    <div
+                      className={cn(
+                        "flex h-full items-center justify-end pr-2 transition-[width] duration-500",
+                        barColor(share)
+                      )}
+                      style={{ width: `${Math.max(share, 4)}%` }}
+                    >
+                      {share >= 10 ? (
+                        <span className="text-[10px] font-semibold tabular-nums text-primary-foreground">
+                          {share}%
+                        </span>
+                      ) : null}
+                    </div>
                   </div>
                 </div>
+                <span className="w-32 shrink-0 text-right text-[10px] font-medium tracking-wider text-muted-foreground uppercase whitespace-nowrap">
+                  {NUMBER_FORMATTER.format(method.dictation_count)} {formatMethod(method.method)}
+                </span>
               </div>
-              <span className="w-28 shrink-0 text-right text-[10px] font-medium tracking-wider text-muted-foreground uppercase whitespace-nowrap">
-                {item.count} {item.label}
-              </span>
-            </div>
-          )
-        })}
-      </div>
+            )
+          })}
+        </div>
+      )}
     </div>
   )
 }
 
-function StreakCard() {
+function StreakCard({
+  currentStreakDays,
+  longestStreakDays,
+  activity,
+}: {
+  currentStreakDays: number
+  longestStreakDays: number
+  activity: Array<{ date: string; dictation_count: number }>
+}) {
   return (
     <div className="rounded-lg border border-border/60 bg-muted/50 p-5">
       <div className="mb-5 flex items-baseline justify-between gap-3">
         <h3 className="text-xl font-semibold tracking-tight">
-          <span className="text-2xl font-bold tabular-nums">12</span>{" "}
+          <span className="text-2xl font-bold tabular-nums">
+            {NUMBER_FORMATTER.format(currentStreakDays)}
+          </span>{" "}
           <span className="text-foreground/90">day streak</span>
         </h3>
         <span className="text-[10px] font-medium tracking-wider text-muted-foreground uppercase">
-          Longest streak | 28 days
+          Longest streak | {NUMBER_FORMATTER.format(longestStreakDays)} days
         </span>
       </div>
-      <StreakHeatmap weeks={26} />
+      <StreakHeatmap activity={activity} weeks={26} />
     </div>
-  )
-}
-
-function InfoIcon() {
-  return (
-    <Info weight="regular" className="size-3 text-muted-foreground/80" />
   )
 }
 
 export function InsightsPage() {
+  const { dashboard, error, isLoading } = useInsightsDashboard()
+
   return (
     <PageShell>
       <PageHeader title="Insights" actions={null} />
@@ -110,54 +117,72 @@ export function InsightsPage() {
       <Section>
         <StatGrid>
           <StatCard
-            value="146"
+            value={
+              isLoading
+                ? "—"
+                : NUMBER_FORMATTER.format(dashboard?.average_words_per_minute ?? 0)
+            }
             label="Words per minute"
-            labelTrailing={<InfoIcon />}
-          >
-            <StatCardGauge value={0.88} sublabel="Top" />
-          </StatCard>
-
-          <StatCard
-            value="0"
-            label="Fixes by Whisply"
-            labelTrailing={<InfoIcon />}
           >
             <p className="text-xs text-muted-foreground">
-              Clean runs so far today.
+              Based on your recorded dictation time.
             </p>
           </StatCard>
 
           <StatCard
-            value="12,847"
-            label="Total words dictated"
-            labelTrailing={<InfoIcon />}
+            value={
+              isLoading
+                ? "—"
+                : NUMBER_FORMATTER.format(dashboard?.total_dictation_count ?? 0)
+            }
+            label="Total dictations"
           >
-            <div className="-mx-4 -mb-4 mt-2 flex items-center justify-between gap-3 rounded-b-lg border-t border-border/60 bg-muted/30 px-4 py-2.5">
-              <div className="flex min-w-0 items-center gap-2">
-                <Monitor className="size-3.5 shrink-0 text-muted-foreground" />
-                <div className="min-w-0 leading-tight">
-                  <div className="truncate text-xs font-medium text-foreground">
-                    Desktop
-                  </div>
-                  <div className="text-[11px] text-muted-foreground">
-                    45 words today
-                  </div>
-                </div>
-              </div>
-              <Button variant="outline" size="xs">
-                Download on mobile
-              </Button>
-            </div>
+            <p className="text-xs text-muted-foreground">All completed dictations.</p>
+          </StatCard>
+
+          <StatCard
+            value={
+              isLoading
+                ? "—"
+                : NUMBER_FORMATTER.format(dashboard?.total_word_count ?? 0)
+            }
+            label="Total words dictated"
+          >
+            <p className="text-xs text-muted-foreground">Across your local history.</p>
           </StatCard>
         </StatGrid>
       </Section>
 
       <Section>
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-          <DictationUsageCard />
-          <StreakCard />
-        </div>
+        {isLoading ? (
+          <p className="px-1 text-sm text-muted-foreground" aria-busy="true">
+            Loading insights…
+          </p>
+        ) : error ? (
+          <p className="px-1 text-sm text-destructive" role="alert">
+            Couldn’t load dictation insights.
+          </p>
+        ) : dashboard ? (
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+            <InsertionMethodCard
+              methods={dashboard.insertion_methods}
+              totalDictations={dashboard.total_dictation_count}
+            />
+            <StreakCard
+              currentStreakDays={dashboard.current_streak_days}
+              longestStreakDays={dashboard.longest_streak_days}
+              activity={dashboard.activity}
+            />
+          </div>
+        ) : null}
       </Section>
     </PageShell>
   )
+}
+
+function formatMethod(method: string): string {
+  return method
+    .split("+")
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" + ")
 }

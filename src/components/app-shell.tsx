@@ -20,6 +20,7 @@ const ROUTE_TITLES: Record<string, string> = {
   "/settings": "Settings",
   "/settings/general": "General",
   "/settings/dictation": "Dictation",
+  "/settings/models": "Models",
   "/settings/shortcut": "Shortcuts",
   "/settings/text-insertion": "Text Insertion",
   "/settings/appearance": "Appearance",

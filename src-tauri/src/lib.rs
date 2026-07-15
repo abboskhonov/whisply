@@ -1,6 +1,7 @@
 mod audio;
 mod dictation;
 mod input;
+mod history;
 mod models;
 mod onboarding;
 mod overlay;
@@ -51,6 +52,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(
             tauri_plugin_log::Builder::new()
+                .level(log::LevelFilter::Info)
                 .targets([
                     Target::new(TargetKind::Stdout),
                     Target::new(TargetKind::LogDir { file_name: None }),
@@ -76,6 +78,14 @@ pub fn run() {
             }
         })
         .setup(|app| {
+            #[cfg(desktop)]
+            {
+                let _ = app.handle().plugin(tauri_plugin_autostart::init(
+                    tauri_plugin_autostart::MacosLauncher::LaunchAgent,
+                    None,
+                ));
+            }
+
             // Safety net: if the recording_overlay webview wasn't created
             // from the static config (e.g. dev process started before the
             // config was updated), create it now so push-to-talk still
@@ -89,6 +99,7 @@ pub fn run() {
             let onboarding_state = app.state::<onboarding::OnboardingState>();
             onboarding_state.init(&handle);
             app.state::<models::ModelManager>().init(&handle);
+            app.manage(history::HistoryStore::open(&handle)?);
             onboarding::open_if_incomplete(&handle);
 
             // Tauri's Linux global-shortcut backend is X11-only. On Wayland,
@@ -136,6 +147,8 @@ pub fn run() {
             onboarding::mark_onboarding_complete,
             onboarding::reset_onboarding,
             onboarding::open_onboarding_window,
+            history::get_home_dashboard,
+            history::get_insights_dashboard,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

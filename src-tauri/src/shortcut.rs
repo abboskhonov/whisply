@@ -147,7 +147,7 @@ fn evdev_key_from_str(value: &str) -> Result<KeyCode, String> {
     if value
         .strip_prefix('f')
         .and_then(|number| number.parse::<u8>().ok())
-        .is_some_and(|number| (1..=12).contains(&number))
+        .is_some_and(|number| (1..=24).contains(&number))
     {
         return KeyCode::from_str(&format!("KEY_{}", value.to_ascii_uppercase()))
             .map_err(|_| format!("Unknown key: '{value}'"));
@@ -227,6 +227,12 @@ fn handle_evdev_event(
     key: KeyCode,
     value: i32,
 ) {
+    // ydotool emits a virtual keyboard stream while inserting a transcript.
+    // Ignore it so text such as an uppercase "F" cannot retrigger Shift+F.
+    if crate::input::is_inserting(app) {
+        return;
+    }
+
     if value == 2 {
         return;
     }
@@ -532,6 +538,20 @@ mod tests {
                 ..ModifierMask::default()
             }
         );
+    }
+
+    #[test]
+    fn parses_ctrl_space_and_function_keys() {
+        let (space, modifiers) = parse_evdev_shortcut("Ctrl+Space").unwrap();
+        assert_eq!(space, KeyCode::KEY_SPACE);
+        assert!(modifiers.ctrl);
+
+        let (function, modifiers) = parse_evdev_shortcut("F8").unwrap();
+        assert_eq!(function, KeyCode::KEY_F8);
+        assert_eq!(modifiers, ModifierMask::default());
+
+        let _: Shortcut = normalize_for_plugin("Ctrl+Space").parse().unwrap();
+        let _: Shortcut = normalize_for_plugin("F8").parse().unwrap();
     }
 
     #[test]
