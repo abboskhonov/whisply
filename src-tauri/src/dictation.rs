@@ -68,10 +68,11 @@ pub fn finish(app: &AppHandle) -> Result<(), String> {
         let audio_duration_ms =
             audio.samples.len() as u64 * 1000 / audio.sample_rate.max(1) as u64;
         let started = Instant::now();
-        let result = app
-            .state::<crate::transcription::TranscriptionState>()
-            .transcribe(&app, &audio.samples, audio.sample_rate)
-            .and_then(|text| {
+        let transcription = app.state::<crate::transcription::TranscriptionState>();
+        let result = transcription.transcribe(&app, &audio.samples, audio.sample_rate);
+        transcription.unload();
+
+        let result = result.and_then(|text| {
                 if text.trim().is_empty() {
                     return Err("No speech was detected".to_string());
                 }

@@ -33,6 +33,16 @@ impl TranscriptionState {
         self.transcribe_with_model(&model_dir, samples, sample_rate)
     }
 
+    /// Release the loaded recognizer once a dictation finishes. The Parakeet
+    /// model is large enough that keeping it warm makes an otherwise idle app
+    /// consume close to a gigabyte of RAM.
+    pub fn unload(&self) {
+        if let Ok(mut cached) = self.recognizer.lock() {
+            *cached = None;
+            log::info!("unloaded local speech model from memory");
+        }
+    }
+
     pub fn transcribe_with_model(
         &self,
         model_dir: &Path,
