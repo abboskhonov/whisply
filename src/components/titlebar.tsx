@@ -21,16 +21,12 @@ export function Titlebar() {
   }
 
   return (
-    <header className="flex h-9 shrink-0 items-center border-b border-border/60 bg-background/90 pl-3 backdrop-blur">
+    <header className="flex h-9 shrink-0 items-center border-b border-border/60 bg-background pl-3">
       <div
-        className="flex min-w-0 flex-1 items-center gap-2"
+        aria-hidden
+        className="min-w-0 flex-1"
         onMouseDown={handleDragStart}
-      >
-        <span className="size-2 rounded-full bg-primary" aria-hidden />
-        <span className="truncate text-xs font-semibold tracking-tight text-foreground/85">
-          Whisply
-        </span>
-      </div>
+      />
       <div className="flex h-full" aria-label="Window controls">
         <button
           type="button"

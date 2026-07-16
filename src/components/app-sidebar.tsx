@@ -29,7 +29,11 @@ export function AppSidebar() {
   }, [settingsOpen, navigate])
 
   return (
-    <Sidebar variant="sidebar" collapsible="none" className="border-r-0">
+    <Sidebar
+      variant="sidebar"
+      collapsible="none"
+      className="border-r border-sidebar-border/70"
+    >
       <SidebarHeader className="p-2 pb-1">
         {settingsOpen ? null : <AppBrand />}
       </SidebarHeader>

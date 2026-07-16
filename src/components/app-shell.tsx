@@ -49,7 +49,7 @@ export function AppShellHeader({
     <header
       data-ui-scroll-ignore
       className={cn(
-        "flex h-12 shrink-0 items-center gap-3 border-b border-border/60 bg-background/80 px-4 backdrop-blur",
+        "flex h-12 shrink-0 items-center gap-3 border-b border-border/60 bg-background px-4",
         className
       )}
     >

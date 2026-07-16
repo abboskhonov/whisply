@@ -1,15 +1,10 @@
 import { createRoute } from "@tanstack/react-router"
 
-import { SettingsSubPage } from "@/pages/settings-sub-page"
+import { AboutSettingsPage } from "@/pages/settings/about-page"
 import { Route as settingsRoute } from "@/routes/settings"
 
 export const Route = createRoute({
   getParentRoute: () => settingsRoute,
   path: "/about",
-  component: () => (
-    <SettingsSubPage
-      title="About"
-      description="Version, updates, and licenses."
-    />
-  ),
+  component: AboutSettingsPage,
 })
