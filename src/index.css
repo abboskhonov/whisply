@@ -51,81 +51,77 @@
 }
 
 :root {
-    /* Warm-grey palette. The hue is kept at ~60 (slight yellow bias) but the
-       chroma is so low that the colors read as grey, not amber. The warmth
-       is a temperature, not a tint. */
-    --background: oklch(0.985 0.005 60);
-    --foreground: oklch(0.18 0.005 60);
+    /* Neutral graphite: pure gray surfaces with no warm or cool cast. */
+    --background: oklch(0.985 0 0);
+    --foreground: oklch(0.18 0 0);
     --card: oklch(1 0 0);
-    --card-foreground: oklch(0.18 0.005 60);
+    --card-foreground: oklch(0.18 0 0);
     --popover: oklch(1 0 0);
-    --popover-foreground: oklch(0.18 0.005 60);
-    --primary: oklch(0.22 0.006 60);
-    --primary-foreground: oklch(0.97 0.005 60);
-    --secondary: oklch(0.96 0.006 60);
-    --secondary-foreground: oklch(0.22 0.006 60);
-    --muted: oklch(0.95 0.008 60);
-    --muted-foreground: oklch(0.48 0.008 60);
-    --accent: oklch(0.93 0.012 60);
-    --accent-foreground: oklch(0.22 0.006 60);
-    --destructive: oklch(0.50 0.04 60);
-    --success: oklch(0.50 0.05 150);
-    --success-foreground: oklch(0.98 0.01 150);
-    --border: oklch(0.88 0.008 60);
-    --input: oklch(0.88 0.008 60);
-    --ring: oklch(0.60 0.04 60);
-    --chart-1: oklch(0.72 0.05 60);
-    --chart-2: oklch(0.65 0.05 90);
-    --chart-3: oklch(0.55 0.05 150);
-    --chart-4: oklch(0.50 0.04 200);
-    --chart-5: oklch(0.45 0.03 260);
+    --popover-foreground: oklch(0.18 0 0);
+    --primary: oklch(0.22 0 0);
+    --primary-foreground: oklch(0.98 0 0);
+    --secondary: oklch(0.96 0 0);
+    --secondary-foreground: oklch(0.22 0 0);
+    --muted: oklch(0.95 0 0);
+    --muted-foreground: oklch(0.48 0 0);
+    --accent: oklch(0.93 0 0);
+    --accent-foreground: oklch(0.22 0 0);
+    --destructive: oklch(0.50 0.16 25);
+    --success: oklch(0.50 0.10 155);
+    --success-foreground: oklch(0.98 0.01 155);
+    --border: oklch(0.88 0 0);
+    --input: oklch(0.88 0 0);
+    --ring: oklch(0.48 0 0);
+    --chart-1: oklch(0.28 0 0);
+    --chart-2: oklch(0.42 0 0);
+    --chart-3: oklch(0.56 0 0);
+    --chart-4: oklch(0.70 0 0);
+    --chart-5: oklch(0.82 0 0);
     --radius: 0.5rem;
-    --sidebar: oklch(0.97 0.006 60);
-    --sidebar-foreground: oklch(0.18 0.005 60);
-    --sidebar-primary: oklch(0.22 0.006 60);
-    --sidebar-primary-foreground: oklch(0.97 0.005 60);
-    --sidebar-accent: oklch(0.93 0.012 60);
-    --sidebar-accent-foreground: oklch(0.22 0.006 60);
-    --sidebar-border: oklch(0.88 0.008 60);
-    --sidebar-ring: oklch(0.60 0.04 60);
+    --sidebar: oklch(0.97 0 0);
+    --sidebar-foreground: oklch(0.18 0 0);
+    --sidebar-primary: oklch(0.22 0 0);
+    --sidebar-primary-foreground: oklch(0.98 0 0);
+    --sidebar-accent: oklch(0.93 0 0);
+    --sidebar-accent-foreground: oklch(0.22 0 0);
+    --sidebar-border: oklch(0.88 0 0);
+    --sidebar-ring: oklch(0.48 0 0);
 }
 
 .dark {
-    /* Warm-greyish dark. Chroma is uniformly 0.004–0.010 — grey with the
-       faintest possible yellow bias, not amber. Five elevation levels. */
-    --background: oklch(0.20 0.004 60);
-    --foreground: oklch(0.92 0.004 60);
-    --card: oklch(0.24 0.004 60);
-    --card-foreground: oklch(0.92 0.004 60);
-    --popover: oklch(0.27 0.004 60);
-    --popover-foreground: oklch(0.92 0.004 60);
-    --primary: oklch(0.92 0.004 60);
-    --primary-foreground: oklch(0.20 0.004 60);
-    --secondary: oklch(0.29 0.004 60);
-    --secondary-foreground: oklch(0.92 0.004 60);
-    --muted: oklch(0.29 0.004 60);
-    --muted-foreground: oklch(0.66 0.005 60);
-    --accent: oklch(0.32 0.006 60);
-    --accent-foreground: oklch(0.92 0.004 60);
-    --destructive: oklch(0.68 0.05 60);
-    --success: oklch(0.68 0.05 150);
-    --success-foreground: oklch(0.20 0.01 150);
+    --background: oklch(0.20 0 0);
+    --foreground: oklch(0.92 0 0);
+    --card: oklch(0.24 0 0);
+    --card-foreground: oklch(0.92 0 0);
+    --popover: oklch(0.27 0 0);
+    --popover-foreground: oklch(0.92 0 0);
+    --primary: oklch(0.92 0 0);
+    --primary-foreground: oklch(0.20 0 0);
+    --secondary: oklch(0.29 0 0);
+    --secondary-foreground: oklch(0.92 0 0);
+    --muted: oklch(0.29 0 0);
+    --muted-foreground: oklch(0.66 0 0);
+    --accent: oklch(0.32 0 0);
+    --accent-foreground: oklch(0.92 0 0);
+    --destructive: oklch(0.70 0.15 25);
+    --success: oklch(0.72 0.10 155);
+    --success-foreground: oklch(0.20 0.01 155);
     --border: oklch(1 0 0 / 6%);
     --input: oklch(1 0 0 / 9%);
-    --ring: oklch(0.72 0.04 60);
-    --chart-1: oklch(0.80 0.05 60);
-    --chart-2: oklch(0.74 0.04 90);
-    --chart-3: oklch(0.70 0.04 150);
-    --chart-4: oklch(0.68 0.03 200);
-    --chart-5: oklch(0.62 0.02 260);
-    --sidebar: oklch(0.22 0.008 65);
-    --sidebar-foreground: oklch(0.92 0.005 70);
-    --sidebar-primary: oklch(0.78 0.04 60);
-    --sidebar-primary-foreground: oklch(0.20 0.004 60);
-    --sidebar-accent: oklch(0.29 0.005 60);
-    --sidebar-accent-foreground: oklch(0.92 0.004 60);
+    --ring: oklch(0.72 0 0);
+    --chart-1: oklch(0.80 0 0);
+    --chart-2: oklch(0.70 0 0);
+    --chart-3: oklch(0.60 0 0);
+    --chart-4: oklch(0.50 0 0);
+    --chart-5: oklch(0.40 0 0);
+    --sidebar: oklch(0.22 0 0);
+    --sidebar-foreground: oklch(0.92 0 0);
+    --sidebar-primary: oklch(0.92 0 0);
+    --sidebar-primary-foreground: oklch(0.20 0 0);
+    --sidebar-accent: oklch(0.29 0 0);
+    --sidebar-accent-foreground: oklch(0.92 0 0);
     --sidebar-border: oklch(1 0 0 / 6%);
-    --sidebar-ring: oklch(0.72 0.04 60);
+    --sidebar-ring: oklch(0.72 0 0);
 }
 
 @layer base {
@@ -148,35 +144,7 @@ body {
 
 body {
   overflow: hidden;
-  /* Very subtle warm radial glows at the corners. Chroma is intentionally
-     low so the glows read as a soft luminance shift, not as a color. */
-  background:
-    radial-gradient(
-      ellipse 90% 60% at 50% -10%,
-      oklch(0.90 0.012 60 / 0.40),
-      transparent 65%
-    ),
-    radial-gradient(
-      ellipse 60% 40% at 100% 100%,
-      oklch(0.88 0.010 60 / 0.25),
-      transparent 70%
-    ),
-    var(--background);
-}
-
-.dark body {
-  background:
-    radial-gradient(
-      ellipse 90% 60% at 50% -10%,
-      oklch(0.30 0.010 60 / 0.22),
-      transparent 65%
-    ),
-    radial-gradient(
-      ellipse 60% 40% at 100% 100%,
-      oklch(0.26 0.008 60 / 0.28),
-      transparent 70%
-    ),
-    var(--background);
+  background: var(--background);
 }
 
 /* Scope the desktop scroll shell to the generated root container only. */
@@ -219,21 +187,20 @@ body {
    Finishing touches
    ────────────────────────────────────────────────────────────────────────── */
 
-/* Warm-grey selection instead of the browser default blue. */
+/* Neutral selection and scrollbar treatment. */
 ::selection {
-  background: oklch(0.82 0.025 60 / 0.45);
-  color: oklch(0.20 0.004 60);
+  background: oklch(0.78 0 0 / 0.6);
+  color: oklch(0.18 0 0);
 }
 
 .dark ::selection {
-  background: oklch(0.55 0.02 60 / 0.40);
-  color: oklch(0.92 0.004 60);
+  background: oklch(0.50 0 0 / 0.6);
+  color: oklch(0.94 0 0);
 }
 
-/* Thin, warm scrollbar. Firefox uses scrollbar-* props; WebKit uses pseudo-elements. */
 * {
   scrollbar-width: thin;
-  scrollbar-color: oklch(0.78 0.02 65) transparent;
+  scrollbar-color: oklch(0.55 0 0) transparent;
 }
 
 *::-webkit-scrollbar {
@@ -246,14 +213,14 @@ body {
 }
 
 *::-webkit-scrollbar-thumb {
-  background: oklch(0.55 0.010 60);
+  background: oklch(0.55 0 0);
   border: 2px solid transparent;
   border-radius: 999px;
   background-clip: content-box;
 }
 
 *::-webkit-scrollbar-thumb:hover {
-  background: oklch(0.40 0.015 60);
+  background: oklch(0.40 0 0);
   background-clip: content-box;
   border: 2px solid transparent;
 }
@@ -263,13 +230,13 @@ body {
 }
 
 .dark *::-webkit-scrollbar-thumb {
-  background: oklch(0.42 0.005 60);
+  background: oklch(0.42 0 0);
   background-clip: content-box;
   border: 2px solid transparent;
 }
 
 .dark *::-webkit-scrollbar-thumb:hover {
-  background: oklch(0.55 0.008 60);
+  background: oklch(0.55 0 0);
   background-clip: content-box;
   border: 2px solid transparent;
 }
@@ -294,7 +261,7 @@ html {
   }
 }
 
-/* Tighter, more refined focus ring — warm amber, 2px, with offset. */
+/* Tighter neutral focus ring, 2px, with offset. */
 :focus-visible {
   outline: 2px solid var(--ring);
   outline-offset: 2px;

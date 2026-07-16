@@ -1,6 +1,7 @@
 :root {
   --ov-surface: #090909;
   --ov-accent: #f8f8f8;
+  --ov-ease: cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 * {
@@ -51,10 +52,40 @@ body {
   background: var(--ov-surface);
   box-shadow: 0 8px 18px rgb(0 0 0 / 28%);
   opacity: 1;
+  transform: translate(0, 0) scale(1);
+  transition:
+    opacity 140ms var(--ov-ease),
+    transform 140ms var(--ov-ease);
+  will-change: opacity, transform;
 }
 
 .ov-pill.is-closed {
   opacity: 0;
+  pointer-events: none;
+}
+
+.ov-stage[data-position="top-left"] .ov-pill.is-closed {
+  transform: translate(-8px, -8px) scale(0.96);
+}
+
+.ov-stage[data-position="top-center"] .ov-pill.is-closed {
+  transform: translateY(-8px) scale(0.96);
+}
+
+.ov-stage[data-position="top-right"] .ov-pill.is-closed {
+  transform: translate(8px, -8px) scale(0.96);
+}
+
+.ov-stage[data-position="bottom-left"] .ov-pill.is-closed {
+  transform: translate(-8px, 8px) scale(0.96);
+}
+
+.ov-stage[data-position="bottom-center"] .ov-pill.is-closed {
+  transform: translateY(8px) scale(0.96);
+}
+
+.ov-stage[data-position="bottom-right"] .ov-pill.is-closed {
+  transform: translate(8px, 8px) scale(0.96);
 }
 
 .ov-pill.is-message {
@@ -130,6 +161,14 @@ body {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .ov-pill {
+    transition: opacity 100ms linear;
+  }
+
+  .ov-pill.is-closed {
+    transform: none;
+  }
+
   .ov-bar {
     transition: none;
   }

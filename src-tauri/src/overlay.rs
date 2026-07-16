@@ -45,6 +45,17 @@ impl OverlayPosition {
     fn is_right(self) -> bool {
         matches!(self, Self::TopRight | Self::BottomRight)
     }
+
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::TopLeft => "top-left",
+            Self::TopCenter => "top-center",
+            Self::TopRight => "top-right",
+            Self::BottomLeft => "bottom-left",
+            Self::BottomCenter => "bottom-center",
+            Self::BottomRight => "bottom-right",
+        }
+    }
 }
 
 /// Pending overlay state to show once the webview is ready.
@@ -333,6 +344,7 @@ pub fn set_overlay_position(app: AppHandle, position: String) -> Result<(), Stri
 
     ensure_window(&app);
     position_overlay(&app);
+    let _ = app.emit_to(OVERLAY_LABEL, "whisply://overlay-position", position.as_str());
     Ok(())
 }
 

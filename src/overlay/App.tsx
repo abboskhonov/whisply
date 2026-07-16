@@ -4,7 +4,9 @@ import { invoke } from "@tauri-apps/api/core"
 
 import {
   OVERLAY_THEME_CHANGED_EVENT,
+  overlayPosition,
   overlayTheme,
+  type OverlayPosition,
   type OverlayTheme,
 } from "@/lib/preferences"
 import "./overlay.css"
@@ -33,6 +35,7 @@ export function OverlayApp() {
   const [levels, setLevels] = useState<number[]>(FALLBACK_LEVELS)
   const [errorMessage, setErrorMessage] = useState("")
   const [theme, setTheme] = useState<OverlayTheme>(overlayTheme)
+  const [position, setPosition] = useState<OverlayPosition>(overlayPosition)
 
   useEffect(() => {
     const unsubs: Array<() => void> = []
@@ -67,6 +70,12 @@ export function OverlayApp() {
       )
       unsubs.push(themeUnlisten)
 
+      const positionUnlisten = await listen<OverlayPosition>(
+        "whisply://overlay-position",
+        (event) => setPosition(event.payload)
+      )
+      unsubs.push(positionUnlisten)
+
       await invoke("overlay_ready")
     })().catch((error) => {
       console.error("Failed to initialize overlay listeners:", error)
@@ -86,6 +95,7 @@ export function OverlayApp() {
       data-state={state}
       data-visible={visible ? "true" : "false"}
       data-theme={theme}
+      data-position={position}
     >
       <div
         className={`ov-pill ${visible ? "is-open" : "is-closed"} ${
