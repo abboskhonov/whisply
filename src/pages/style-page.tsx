@@ -1,5 +1,6 @@
 import * as React from "react"
 import { Check, Waveform } from "@phosphor-icons/react"
+import { invoke } from "@tauri-apps/api/core"
 import { emit } from "@tauri-apps/api/event"
 
 import { Badge } from "@/components/ui/badge"
@@ -11,8 +12,11 @@ import {
 } from "@/components/page"
 import {
   OVERLAY_THEME_CHANGED_EVENT,
+  overlayPosition,
   overlayTheme,
+  setOverlayPosition,
   setOverlayTheme,
+  type OverlayPosition,
   type OverlayTheme,
 } from "@/lib/preferences"
 import { isTauri } from "@/lib/tauri"
@@ -25,6 +29,15 @@ type ThemeOption = {
   previewClass: string
   accentClass: string
 }
+
+const OVERLAY_POSITIONS: Array<{ id: OverlayPosition; label: string }> = [
+  { id: "top-left", label: "Top left" },
+  { id: "top-center", label: "Top center" },
+  { id: "top-right", label: "Top right" },
+  { id: "bottom-left", label: "Bottom left" },
+  { id: "bottom-center", label: "Bottom center" },
+  { id: "bottom-right", label: "Bottom right" },
+]
 
 const OVERLAY_THEMES: ThemeOption[] = [
   {
@@ -53,6 +66,8 @@ const OVERLAY_THEMES: ThemeOption[] = [
 export function StylePage() {
   const [selectedTheme, setSelectedTheme] =
     React.useState<OverlayTheme>(overlayTheme)
+  const [selectedPosition, setSelectedPosition] =
+    React.useState<OverlayPosition>(overlayPosition)
 
   const selectTheme = async (theme: OverlayTheme) => {
     setSelectedTheme(theme)
@@ -62,6 +77,18 @@ export function StylePage() {
         await emit(OVERLAY_THEME_CHANGED_EVENT, theme)
       } catch (cause) {
         console.error("Failed to update overlay theme:", cause)
+      }
+    }
+  }
+
+  const selectPosition = async (position: OverlayPosition) => {
+    setSelectedPosition(position)
+    setOverlayPosition(position)
+    if (isTauri()) {
+      try {
+        await invoke("set_overlay_position", { position })
+      } catch (cause) {
+        console.error("Failed to update overlay position:", cause)
       }
     }
   }
@@ -97,17 +124,13 @@ export function StylePage() {
               >
                 <div
                   className={cn(
-                    "flex h-20 items-center gap-2 rounded-lg px-3 shadow-sm",
+                    "flex h-20 items-center justify-center gap-3 rounded-lg px-3 shadow-sm",
                     theme.previewClass
                   )}
                 >
-                  <span
-                    className={cn("size-2 rounded-full", theme.accentClass)}
-                  />
-                  <span className="text-xs font-semibold">Listening</span>
                   <span className="text-[10px] text-white/55">0:08</span>
-                  <span className="ml-auto flex h-5 items-center gap-0.5">
-                    {[8, 14, 20, 11, 17, 8, 15].map((height, index) => (
+                  <span className="flex h-4 items-center gap-1">
+                    {[5, 10, 15, 8, 13, 5, 11].map((height, index) => (
                       <span
                         key={index}
                         className={cn("w-0.5 rounded-full", theme.accentClass)}
@@ -138,6 +161,35 @@ export function StylePage() {
                 <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
                   {theme.description}
                 </p>
+              </button>
+            )
+          })}
+        </div>
+      </Section>
+
+      <Section>
+        <SectionHeader
+          title="Position"
+          description="Choose where the recording indicator appears."
+        />
+        <div className="grid grid-cols-3 gap-2">
+          {OVERLAY_POSITIONS.map((position) => {
+            const selected = position.id === selectedPosition
+            return (
+              <button
+                key={position.id}
+                type="button"
+                aria-pressed={selected}
+                onClick={() => void selectPosition(position.id)}
+                className={cn(
+                  "rounded-lg border px-3 py-2 text-xs font-medium transition-colors outline-none",
+                  "hover:bg-muted/40 focus-visible:ring-2 focus-visible:ring-ring",
+                  selected
+                    ? "border-primary bg-primary/[0.08] text-foreground"
+                    : "border-border/60 bg-card/40 text-muted-foreground"
+                )}
+              >
+                {position.label}
               </button>
             )
           })}

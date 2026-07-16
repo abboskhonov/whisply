@@ -201,10 +201,6 @@ export function LogsPage() {
       })
       unsubs.push(u6)
 
-      const u7 = await listen("whisply://overlay-cancel", () => {
-        push("warn", "overlay", "cancel button pressed")
-      })
-      unsubs.push(u7)
 
       const u8 = await listen<{ shortcut: string; mode?: string }>(
         "whisply://shortcut-registered",

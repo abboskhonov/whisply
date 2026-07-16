@@ -1,5 +1,7 @@
+use crate::models::ModelFormat;
 use sherpa_onnx::{
-    OfflineRecognizer, OfflineRecognizerConfig, OfflineTransducerModelConfig,
+    OfflineNemoEncDecCtcModelConfig, OfflineRecognizer, OfflineRecognizerConfig,
+    OfflineTransducerModelConfig,
 };
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
@@ -27,14 +29,14 @@ impl TranscriptionState {
         samples: &[f32],
         sample_rate: u32,
     ) -> Result<String, String> {
-        let model_dir = app
+        let (model_dir, format) = app
             .state::<crate::models::ModelManager>()
-            .selected_model_dir(app)?;
-        self.transcribe_with_model(&model_dir, samples, sample_rate)
+            .selected_model(app)?;
+        self.transcribe_with_model(&model_dir, format, samples, sample_rate)
     }
 
-    /// Release the loaded recognizer once a dictation finishes. The Parakeet
-    /// model is large enough that keeping it warm makes an otherwise idle app
+    /// Release the loaded recognizer once a dictation finishes. Speech models
+    /// are large enough that keeping one warm makes an otherwise idle app
     /// consume close to a gigabyte of RAM.
     pub fn unload(&self) {
         if let Ok(mut cached) = self.recognizer.lock() {
@@ -46,6 +48,7 @@ impl TranscriptionState {
     pub fn transcribe_with_model(
         &self,
         model_dir: &Path,
+        format: ModelFormat,
         samples: &[f32],
         sample_rate: u32,
     ) -> Result<String, String> {
@@ -57,7 +60,7 @@ impl TranscriptionState {
         {
             log::info!("loading local speech model from {}", model_dir.display());
             *cached = Some(CachedRecognizer {
-                recognizer: create_recognizer(model_dir)?,
+                recognizer: create_recognizer(model_dir, format)?,
                 model_dir: model_dir.to_path_buf(),
             });
         }
@@ -81,23 +84,33 @@ fn validate_audio(samples: &[f32], sample_rate: u32) -> Result<(), String> {
     }
 }
 
-fn create_recognizer(model_dir: &Path) -> Result<OfflineRecognizer, String> {
+fn create_recognizer(model_dir: &Path, format: ModelFormat) -> Result<OfflineRecognizer, String> {
     let path = |name: &str| model_dir.join(name).to_string_lossy().into_owned();
     let mut config = OfflineRecognizerConfig::default();
-    config.model_config.transducer = OfflineTransducerModelConfig {
-        encoder: Some(path("encoder.int8.onnx")),
-        decoder: Some(path("decoder.int8.onnx")),
-        joiner: Some(path("joiner.int8.onnx")),
-    };
+    match format {
+        ModelFormat::NemoTransducer => {
+            config.model_config.transducer = OfflineTransducerModelConfig {
+                encoder: Some(path("encoder.int8.onnx")),
+                decoder: Some(path("decoder.int8.onnx")),
+                joiner: Some(path("joiner.int8.onnx")),
+            };
+            config.model_config.model_type = Some("nemo_transducer".to_string());
+        }
+        ModelFormat::GigaAmCtc => {
+            config.feat_config.feature_dim = 64;
+            config.model_config.nemo_ctc = OfflineNemoEncDecCtcModelConfig {
+                model: Some(path("model.int8.onnx")),
+            };
+        }
+    }
     config.model_config.tokens = Some(path("tokens.txt"));
-    config.model_config.model_type = Some("nemo_transducer".to_string());
     config.model_config.provider = Some("cpu".to_string());
     config.model_config.num_threads = std::thread::available_parallelism()
         .map(|threads| threads.get().min(4) as i32)
         .unwrap_or(2);
 
     OfflineRecognizer::create(&config)
-        .ok_or_else(|| "Could not initialize the selected Parakeet model".to_string())
+        .ok_or_else(|| "Could not initialize the selected speech model".to_string())
 }
 
 #[cfg(test)]
@@ -121,10 +134,20 @@ mod tests {
         let text = TranscriptionState::new()
             .transcribe_with_model(
                 Path::new(&model_dir),
+                ModelFormat::NemoTransducer,
                 wave.samples(),
                 wave.sample_rate() as u32,
             )
             .expect("transcribe test wave");
         assert!(!text.trim().is_empty());
+    }
+
+    #[test]
+    fn initializes_gigaam_when_model_is_provided() {
+        let Ok(model_dir) = std::env::var("WHISPLY_TEST_GIGAAM_MODEL_DIR") else {
+            return;
+        };
+        create_recognizer(Path::new(&model_dir), ModelFormat::GigaAmCtc)
+            .expect("initialize GigaAM CTC model");
     }
 }

@@ -18,10 +18,6 @@ impl DictationState {
         self.generation.fetch_add(1, Ordering::SeqCst) + 1
     }
 
-    fn cancel_session(&self) {
-        self.generation.fetch_add(1, Ordering::SeqCst);
-    }
-
     fn is_current(&self, generation: u64) -> bool {
         self.generation.load(Ordering::SeqCst) == generation
     }
@@ -152,10 +148,4 @@ pub fn finish(app: &AppHandle) -> Result<(), String> {
         }
     });
     Ok(())
-}
-
-pub fn cancel(app: &AppHandle) {
-    app.state::<DictationState>().cancel_session();
-    let _ = crate::audio::stop_audio_capture(app.clone());
-    crate::overlay::hide(app);
 }

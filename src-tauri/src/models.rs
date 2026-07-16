@@ -18,21 +18,56 @@ pub struct ModelSpec {
     pub name: &'static str,
     pub description: &'static str,
     pub languages: &'static str,
-    pub archive_name: &'static str,
     pub directory_name: &'static str,
-    pub download_url: &'static str,
+    pub source: ModelSource,
+    pub format: ModelFormat,
     pub download_size_bytes: u64,
 }
 
-const MODELS: [ModelSpec; 2] = [
+#[derive(Clone, Copy)]
+pub enum ModelSource {
+    Archive {
+        archive_name: &'static str,
+        download_url: &'static str,
+    },
+    Files(&'static [ModelFile]),
+}
+
+#[derive(Clone, Copy)]
+pub struct ModelFile {
+    pub destination: &'static str,
+    pub download_url: &'static str,
+}
+
+#[derive(Clone, Copy)]
+pub enum ModelFormat {
+    NemoTransducer,
+    GigaAmCtc,
+}
+
+const GIGA_AM_MULTILINGUAL_FILES: [ModelFile; 2] = [
+    ModelFile {
+        destination: "model.int8.onnx",
+        download_url: "https://huggingface.co/istupakov/gigaam-multilingual-ctc-onnx/resolve/458860e1983aef670dd9795fb6af603c82767d5d/multilingual_ctc.int8.onnx?download=true",
+    },
+    ModelFile {
+        destination: "tokens.txt",
+        download_url: "https://huggingface.co/istupakov/gigaam-multilingual-ctc-onnx/resolve/458860e1983aef670dd9795fb6af603c82767d5d/multilingual_vocab.txt?download=true",
+    },
+];
+
+const MODELS: [ModelSpec; 3] = [
     ModelSpec {
         id: "parakeet-tdt-0.6b-v3-int8",
         name: "Parakeet 0.6B Multilingual",
         description: "Best default · punctuation, capitalization, and 25 European languages",
         languages: "25 languages",
-        archive_name: "parakeet-tdt-0.6b-v3-int8.tar.bz2",
         directory_name: "sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8",
-        download_url: "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8.tar.bz2",
+        source: ModelSource::Archive {
+            archive_name: "parakeet-tdt-0.6b-v3-int8.tar.bz2",
+            download_url: "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8.tar.bz2",
+        },
+        format: ModelFormat::NemoTransducer,
         download_size_bytes: 487_170_055,
     },
     ModelSpec {
@@ -40,10 +75,23 @@ const MODELS: [ModelSpec; 2] = [
         name: "Parakeet 0.6B English",
         description: "English-only · slightly faster and more accurate for English dictation",
         languages: "English",
-        archive_name: "parakeet-tdt-0.6b-v2-int8.tar.bz2",
         directory_name: "sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8",
-        download_url: "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8.tar.bz2",
+        source: ModelSource::Archive {
+            archive_name: "parakeet-tdt-0.6b-v2-int8.tar.bz2",
+            download_url: "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8.tar.bz2",
+        },
+        format: ModelFormat::NemoTransducer,
         download_size_bytes: 482_468_385,
+    },
+    ModelSpec {
+        id: "gigaam-multilingual-ctc-int8",
+        name: "GigaAM Multilingual",
+        description: "Best for Uzbek, Kazakh, and Kyrgyz dictation",
+        languages: "Uzbek, Kazakh, Kyrgyz, Russian, English",
+        directory_name: "gigaam-multilingual-ctc-int8",
+        source: ModelSource::Files(&GIGA_AM_MULTILINGUAL_FILES),
+        format: ModelFormat::GigaAmCtc,
+        download_size_bytes: 224_762_597,
     },
 ];
 
@@ -106,23 +154,28 @@ impl ModelManager {
     }
 
     pub fn selected_model_dir(&self, app: &AppHandle) -> Result<PathBuf, String> {
+        self.selected_model(app).map(|(path, _)| path)
+    }
+
+    pub fn selected_model(&self, app: &AppHandle) -> Result<(PathBuf, ModelFormat), String> {
         let selected = self
             .selected
             .lock()
             .map_err(|error| error.to_string())?
             .clone()
-            .ok_or_else(|| "No speech model selected. Finish model setup in onboarding.".to_string())?;
+            .ok_or_else(|| {
+                "No speech model selected. Finish model setup in onboarding.".to_string()
+            })?;
         let spec = model_spec(&selected)?;
         let path = models_dir(app)?.join(spec.directory_name);
-        validate_model_dir(&path)?;
-        Ok(path)
+        validate_model_dir(&path, spec.format)?;
+        Ok((path, spec.format))
     }
 
     fn select(&self, app: &AppHandle, model_id: &str) -> Result<(), String> {
         let spec = model_spec(model_id)?;
-        validate_model_dir(&models_dir(app)?.join(spec.directory_name))?;
-        *self.selected.lock().map_err(|error| error.to_string())? =
-            Some(model_id.to_string());
+        validate_model_dir(&models_dir(app)?.join(spec.directory_name), spec.format)?;
+        *self.selected.lock().map_err(|error| error.to_string())? = Some(model_id.to_string());
         persist_selection(app, Some(model_id))
     }
 }
@@ -163,23 +216,59 @@ fn persist_selection(app: &AppHandle, selected_model_id: Option<&str>) -> Result
     fs::rename(&temporary, &path).map_err(|error| error.to_string())
 }
 
-fn validate_model_dir(path: &Path) -> Result<(), String> {
-    const REQUIRED_FILES: [(&str, u64); 4] = [
-        ("encoder.int8.onnx", 100_000_000),
-        ("decoder.int8.onnx", 1_000),
-        ("joiner.int8.onnx", 1_000),
-        ("tokens.txt", 100),
-    ];
+fn validate_model_dir(path: &Path, format: ModelFormat) -> Result<(), String> {
+    let required_files: &[(&str, u64)] = match format {
+        ModelFormat::NemoTransducer => &[
+            ("encoder.int8.onnx", 100_000_000),
+            ("decoder.int8.onnx", 1_000),
+            ("joiner.int8.onnx", 1_000),
+            ("tokens.txt", 100),
+        ],
+        ModelFormat::GigaAmCtc => &[("model.int8.onnx", 100_000_000), ("tokens.txt", 100)],
+    };
 
-    for (file, minimum_size) in REQUIRED_FILES {
+    for (file, minimum_size) in required_files {
         let candidate = path.join(file);
-        let metadata = fs::metadata(&candidate)
-            .map_err(|_| format!("Speech model is incomplete: {} is missing", candidate.display()))?;
-        if !metadata.is_file() || metadata.len() < minimum_size {
-            return Err(format!("Speech model file is invalid: {}", candidate.display()));
+        let metadata = fs::metadata(&candidate).map_err(|_| {
+            format!(
+                "Speech model is incomplete: {} is missing",
+                candidate.display()
+            )
+        })?;
+        if !metadata.is_file() || metadata.len() < *minimum_size {
+            return Err(format!(
+                "Speech model file is invalid: {}",
+                candidate.display()
+            ));
         }
     }
     Ok(())
+}
+
+fn add_gigaam_metadata(model_path: &Path) -> Result<(), String> {
+    // sherpa-onnx relies on these standard ONNX metadata entries to configure
+    // GigaAM's CTC decoder. The compact model conversion omits them.
+    let mut model = fs::OpenOptions::new()
+        .append(true)
+        .open(model_path)
+        .map_err(|error| error.to_string())?;
+    for (key, value) in [
+        ("vocab_size", "71"),
+        ("subsampling_factor", "4"),
+        ("normalize_type", ""),
+        ("is_giga_am", "1"),
+    ] {
+        let mut entry = Vec::with_capacity(key.len() + value.len() + 4);
+        entry.extend([0x0a, key.len() as u8]);
+        entry.extend(key.as_bytes());
+        entry.extend([0x12, value.len() as u8]);
+        entry.extend(value.as_bytes());
+        model
+            .write_all(&[0x72, entry.len() as u8])
+            .and_then(|_| model.write_all(&entry))
+            .map_err(|error| error.to_string())?;
+    }
+    model.sync_all().map_err(|error| error.to_string())
 }
 
 fn emit_progress(
@@ -213,9 +302,25 @@ fn download_and_extract(
     manager: &ModelManager,
     spec: ModelSpec,
 ) -> Result<(), String> {
+    match spec.source {
+        ModelSource::Archive {
+            archive_name,
+            download_url,
+        } => download_archive(app, manager, spec, archive_name, download_url),
+        ModelSource::Files(files) => download_files(app, manager, spec, files),
+    }
+}
+
+fn download_archive(
+    app: &AppHandle,
+    manager: &ModelManager,
+    spec: ModelSpec,
+    archive_name: &str,
+    download_url: &str,
+) -> Result<(), String> {
     let base = models_dir(app)?;
     fs::create_dir_all(&base).map_err(|error| error.to_string())?;
-    let archive_path = base.join(format!("{}.part", spec.archive_name));
+    let archive_path = base.join(format!("{archive_name}.part"));
     let model_path = base.join(spec.directory_name);
     let _ = fs::remove_file(&archive_path);
 
@@ -233,11 +338,13 @@ fn download_and_extract(
         .build()
         .map_err(|error| format!("Could not create downloader: {error}"))?;
     let mut response = client
-        .get(spec.download_url)
+        .get(download_url)
         .send()
         .and_then(reqwest::blocking::Response::error_for_status)
         .map_err(|error| format!("Model download failed: {error}"))?;
-    let total = response.content_length().unwrap_or(spec.download_size_bytes);
+    let total = response
+        .content_length()
+        .unwrap_or(spec.download_size_bytes);
     let mut output = File::create(&archive_path).map_err(|error| error.to_string())?;
     let mut buffer = vec![0_u8; 256 * 1024];
     let mut downloaded = 0_u64;
@@ -247,7 +354,14 @@ fn download_and_extract(
         if manager.cancel_download.load(Ordering::SeqCst) {
             drop(output);
             let _ = fs::remove_file(&archive_path);
-            emit_progress(app, spec, "cancelled", downloaded, total, "Download cancelled");
+            emit_progress(
+                app,
+                spec,
+                "cancelled",
+                downloaded,
+                total,
+                "Download cancelled",
+            );
             return Ok(());
         }
 
@@ -262,21 +376,42 @@ fn download_and_extract(
             .map_err(|error| format!("Could not save model: {error}"))?;
         downloaded += count as u64;
         if last_emit.elapsed() >= Duration::from_millis(120) {
-            emit_progress(app, spec, "downloading", downloaded, total, "Downloading model…");
+            emit_progress(
+                app,
+                spec,
+                "downloading",
+                downloaded,
+                total,
+                "Downloading model…",
+            );
             last_emit = Instant::now();
         }
     }
     output.sync_all().map_err(|error| error.to_string())?;
 
-    emit_progress(app, spec, "extracting", downloaded, total, "Installing model…");
+    emit_progress(
+        app,
+        spec,
+        "extracting",
+        downloaded,
+        total,
+        "Installing model…",
+    );
     let _ = fs::remove_dir_all(&model_path);
     let archive = File::open(&archive_path).map_err(|error| error.to_string())?;
     Archive::new(BzDecoder::new(archive))
         .unpack(&base)
         .map_err(|error| format!("Could not extract model: {error}"))?;
 
-    emit_progress(app, spec, "verifying", downloaded, total, "Verifying model files…");
-    validate_model_dir(&model_path)?;
+    emit_progress(
+        app,
+        spec,
+        "verifying",
+        downloaded,
+        total,
+        "Verifying model files…",
+    );
+    validate_model_dir(&model_path, spec.format)?;
     manager.select(app, spec.id)?;
     let _ = fs::remove_file(&archive_path);
     emit_progress(app, spec, "ready", total, total, "Model ready");
@@ -284,8 +419,116 @@ fn download_and_extract(
     Ok(())
 }
 
+fn download_files(
+    app: &AppHandle,
+    manager: &ModelManager,
+    spec: ModelSpec,
+    files: &[ModelFile],
+) -> Result<(), String> {
+    let base = models_dir(app)?;
+    fs::create_dir_all(&base).map_err(|error| error.to_string())?;
+    let model_path = base.join(spec.directory_name);
+    let temporary_path = base.join(format!("{}.part", spec.directory_name));
+    let _ = fs::remove_dir_all(&temporary_path);
+    fs::create_dir_all(&temporary_path).map_err(|error| error.to_string())?;
+
+    let client = reqwest::blocking::Client::builder()
+        .user_agent("Whisply/0.1")
+        .build()
+        .map_err(|error| format!("Could not create downloader: {error}"))?;
+    let mut downloaded = 0_u64;
+    let mut last_emit = Instant::now() - Duration::from_secs(1);
+    emit_progress(
+        app,
+        spec,
+        "downloading",
+        downloaded,
+        spec.download_size_bytes,
+        "Connecting…",
+    );
+
+    for file in files {
+        let mut response = client
+            .get(file.download_url)
+            .send()
+            .and_then(reqwest::blocking::Response::error_for_status)
+            .map_err(|error| format!("Model download failed: {error}"))?;
+        let mut output = File::create(temporary_path.join(file.destination))
+            .map_err(|error| error.to_string())?;
+        let mut buffer = vec![0_u8; 256 * 1024];
+
+        loop {
+            if manager.cancel_download.load(Ordering::SeqCst) {
+                drop(output);
+                let _ = fs::remove_dir_all(&temporary_path);
+                emit_progress(
+                    app,
+                    spec,
+                    "cancelled",
+                    downloaded,
+                    spec.download_size_bytes,
+                    "Download cancelled",
+                );
+                return Ok(());
+            }
+
+            let count = response
+                .read(&mut buffer)
+                .map_err(|error| format!("Model download interrupted: {error}"))?;
+            if count == 0 {
+                break;
+            }
+            output
+                .write_all(&buffer[..count])
+                .map_err(|error| format!("Could not save model: {error}"))?;
+            downloaded += count as u64;
+            if last_emit.elapsed() >= Duration::from_millis(120) {
+                emit_progress(
+                    app,
+                    spec,
+                    "downloading",
+                    downloaded,
+                    spec.download_size_bytes,
+                    "Downloading model…",
+                );
+                last_emit = Instant::now();
+            }
+        }
+        output.sync_all().map_err(|error| error.to_string())?;
+    }
+
+    if matches!(spec.format, ModelFormat::GigaAmCtc) {
+        add_gigaam_metadata(&temporary_path.join("model.int8.onnx"))?;
+    }
+    emit_progress(
+        app,
+        spec,
+        "verifying",
+        downloaded,
+        spec.download_size_bytes,
+        "Verifying model files…",
+    );
+    validate_model_dir(&temporary_path, spec.format)?;
+    let _ = fs::remove_dir_all(&model_path);
+    fs::rename(&temporary_path, &model_path).map_err(|error| error.to_string())?;
+    manager.select(app, spec.id)?;
+    emit_progress(
+        app,
+        spec,
+        "ready",
+        downloaded,
+        spec.download_size_bytes,
+        "Model ready",
+    );
+    log::info!("speech model installed and selected: {}", spec.id);
+    Ok(())
+}
+
 #[tauri::command]
-pub fn list_models(app: AppHandle, manager: tauri::State<'_, ModelManager>) -> Result<Vec<ModelInfo>, String> {
+pub fn list_models(
+    app: AppHandle,
+    manager: tauri::State<'_, ModelManager>,
+) -> Result<Vec<ModelInfo>, String> {
     let selected = manager
         .selected
         .lock()
@@ -300,7 +543,7 @@ pub fn list_models(app: AppHandle, manager: tauri::State<'_, ModelManager>) -> R
             description: spec.description.to_string(),
             languages: spec.languages.to_string(),
             download_size_bytes: spec.download_size_bytes,
-            installed: validate_model_dir(&base.join(spec.directory_name)).is_ok(),
+            installed: validate_model_dir(&base.join(spec.directory_name), spec.format).is_ok(),
             selected: selected.as_deref() == Some(spec.id),
         })
         .collect())
@@ -353,12 +596,33 @@ mod tests {
 
     #[test]
     fn catalog_ids_and_directories_are_unique() {
-        assert_ne!(MODELS[0].id, MODELS[1].id);
-        assert_ne!(MODELS[0].directory_name, MODELS[1].directory_name);
+        for (index, model) in MODELS.iter().enumerate() {
+            for other in &MODELS[index + 1..] {
+                assert_ne!(model.id, other.id);
+                assert_ne!(model.directory_name, other.directory_name);
+            }
+        }
     }
 
     #[test]
     fn unknown_model_is_rejected() {
         assert!(model_spec("not-a-model").is_err());
+    }
+
+    #[test]
+    fn gigaam_metadata_is_appended_as_onnx_properties() {
+        let model_path =
+            std::env::temp_dir().join(format!("whisply-gigaam-metadata-{}", std::process::id()));
+        fs::write(&model_path, []).expect("create test model");
+        add_gigaam_metadata(&model_path).expect("append metadata");
+        assert_eq!(
+            fs::read(&model_path).expect("read test model"),
+            b"\x72\x10\x0a\x0a vocab_size\x12\x02 71\x72\x17\x0a\x12 subsampling_factor\x12\x01 4\x72\x12\x0a\x0e normalize_type\x12\x00\x72\x0f\x0a\x0a is_giga_am\x12\x01 1"
+                .iter()
+                .filter(|byte| **byte != b' ')
+                .copied()
+                .collect::<Vec<_>>()
+        );
+        let _ = fs::remove_file(model_path);
     }
 }

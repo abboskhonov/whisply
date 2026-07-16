@@ -7,14 +7,54 @@ use tauri::{AppHandle, Emitter, Manager, WebviewUrl, WebviewWindowBuilder};
 use gtk_layer_shell::{Edge, Layer, LayerShell};
 
 const OVERLAY_LABEL: &str = "recording_overlay";
-const OVERLAY_WIDTH: f64 = 420.0;
-const OVERLAY_HEIGHT: f64 = 120.0;
+const OVERLAY_WIDTH: f64 = 280.0;
+const OVERLAY_HEIGHT: f64 = 76.0;
+const OVERLAY_MARGIN: f64 = 12.0;
+
+#[derive(Clone, Copy)]
+enum OverlayPosition {
+    TopLeft,
+    TopCenter,
+    TopRight,
+    BottomLeft,
+    BottomCenter,
+    BottomRight,
+}
+
+impl OverlayPosition {
+    fn parse(value: &str) -> Option<Self> {
+        match value {
+            "top-left" => Some(Self::TopLeft),
+            "top-center" => Some(Self::TopCenter),
+            "top-right" => Some(Self::TopRight),
+            "bottom-left" => Some(Self::BottomLeft),
+            "bottom-center" => Some(Self::BottomCenter),
+            "bottom-right" => Some(Self::BottomRight),
+            _ => None,
+        }
+    }
+
+    fn is_top(self) -> bool {
+        matches!(self, Self::TopLeft | Self::TopCenter | Self::TopRight)
+    }
+
+    fn is_left(self) -> bool {
+        matches!(self, Self::TopLeft | Self::BottomLeft)
+    }
+
+    fn is_right(self) -> bool {
+        matches!(self, Self::TopRight | Self::BottomRight)
+    }
+}
 
 /// Pending overlay state to show once the webview is ready.
 static PENDING_STATE: Mutex<Option<PendingOverlay>> = Mutex::new(None);
 static OVERLAY_READY: AtomicBool = AtomicBool::new(false);
+static OVERLAY_POSITION: Mutex<OverlayPosition> = Mutex::new(OverlayPosition::TopCenter);
 #[cfg(target_os = "linux")]
 static LAYER_SHELL_INITIALIZED: AtomicBool = AtomicBool::new(false);
+#[cfg(target_os = "linux")]
+static LAYER_SHELL_ACTIVE: AtomicBool = AtomicBool::new(false);
 
 struct PendingOverlay {
     state: String,
@@ -56,14 +96,112 @@ fn init_layer_shell(window: &tauri::WebviewWindow) {
     gtk_window.set_layer(Layer::Overlay);
     gtk_window.set_keyboard_mode(gtk_layer_shell::KeyboardMode::None);
     gtk_window.set_exclusive_zone(0);
-    // With no horizontal anchor, layer-shell centers the fixed-width surface.
-    gtk_window.set_anchor(Edge::Top, true);
+    let position = overlay_position();
+    gtk_window.set_anchor(Edge::Top, position.is_top());
+    gtk_window.set_anchor(Edge::Bottom, !position.is_top());
+    gtk_window.set_anchor(Edge::Left, position.is_left());
+    gtk_window.set_anchor(Edge::Right, position.is_right());
+    gtk_window.set_layer_shell_margin(
+        Edge::Top,
+        if position.is_top() {
+            OVERLAY_MARGIN as i32
+        } else {
+            0
+        },
+    );
+    gtk_window.set_layer_shell_margin(
+        Edge::Bottom,
+        if position.is_top() {
+            0
+        } else {
+            OVERLAY_MARGIN as i32
+        },
+    );
+    gtk_window.set_layer_shell_margin(
+        Edge::Left,
+        if position.is_left() {
+            OVERLAY_MARGIN as i32
+        } else {
+            0
+        },
+    );
+    gtk_window.set_layer_shell_margin(
+        Edge::Right,
+        if position.is_right() {
+            OVERLAY_MARGIN as i32
+        } else {
+            0
+        },
+    );
+    LAYER_SHELL_ACTIVE.store(true, Ordering::SeqCst);
 
     log::info!("GTK layer shell initialized for overlay (Layer::Overlay)");
 }
 
 #[cfg(not(target_os = "linux"))]
 fn init_layer_shell(_window: &tauri::WebviewWindow) {}
+
+#[cfg(target_os = "linux")]
+fn update_layer_shell_position(window: &tauri::WebviewWindow, position: OverlayPosition) {
+    let layer_window = window.clone();
+    if let Err(error) = window.run_on_main_thread(move || {
+        let Ok(gtk_window) = layer_window.gtk_window() else {
+            return;
+        };
+        if !gtk_window.is_layer_window() {
+            return;
+        }
+
+        gtk_window.set_anchor(Edge::Top, position.is_top());
+        gtk_window.set_anchor(Edge::Bottom, !position.is_top());
+        gtk_window.set_anchor(Edge::Left, position.is_left());
+        gtk_window.set_anchor(Edge::Right, position.is_right());
+        gtk_window.set_layer_shell_margin(
+            Edge::Top,
+            if position.is_top() {
+                OVERLAY_MARGIN as i32
+            } else {
+                0
+            },
+        );
+        gtk_window.set_layer_shell_margin(
+            Edge::Bottom,
+            if position.is_top() {
+                0
+            } else {
+                OVERLAY_MARGIN as i32
+            },
+        );
+        gtk_window.set_layer_shell_margin(
+            Edge::Left,
+            if position.is_left() {
+                OVERLAY_MARGIN as i32
+            } else {
+                0
+            },
+        );
+        gtk_window.set_layer_shell_margin(
+            Edge::Right,
+            if position.is_right() {
+                OVERLAY_MARGIN as i32
+            } else {
+                0
+            },
+        );
+    }) {
+        log::warn!("could not update layer-shell overlay position: {error}");
+    }
+}
+
+#[cfg(not(target_os = "linux"))]
+fn update_layer_shell_position(_window: &tauri::WebviewWindow, _position: OverlayPosition) {}
+
+fn overlay_position() -> OverlayPosition {
+    OVERLAY_POSITION
+        .lock()
+        .map(|position| *position)
+        .unwrap_or(OverlayPosition::TopCenter)
+}
 
 /// Ensure the overlay webview exists. Creates it on first call.
 /// On Linux, also initialises GTK layer shell for proper Wayland
@@ -121,8 +259,30 @@ fn position_overlay(app: &AppHandle) {
     let win_w = (OVERLAY_WIDTH * scale) as i32;
     let win_h = (OVERLAY_HEIGHT * scale) as i32;
 
-    let x = mon_pos.x + (mon_size.width as i32 - win_w) / 2;
-    let y = mon_pos.y + (12.0 * scale) as i32;
+    #[cfg(target_os = "linux")]
+    if LAYER_SHELL_ACTIVE.load(Ordering::SeqCst) {
+        update_layer_shell_position(&window, overlay_position());
+        let _ = window.set_size(tauri::Size::Physical(tauri::PhysicalSize {
+            width: win_w as u32,
+            height: win_h as u32,
+        }));
+        return;
+    }
+
+    let margin = (OVERLAY_MARGIN * scale) as i32;
+    let position = overlay_position();
+    let x = if position.is_left() {
+        mon_pos.x + margin
+    } else if position.is_right() {
+        mon_pos.x + mon_size.width as i32 - win_w - margin
+    } else {
+        mon_pos.x + (mon_size.width as i32 - win_w) / 2
+    };
+    let y = if position.is_top() {
+        mon_pos.y + margin
+    } else {
+        mon_pos.y + mon_size.height as i32 - win_h - margin
+    };
 
     let _ = window.set_position(tauri::Position::Physical(tauri::PhysicalPosition { x, y }));
     let _ = window.set_size(tauri::Size::Physical(tauri::PhysicalSize {
@@ -158,6 +318,21 @@ pub fn mark_ready(app: &AppHandle) {
 #[tauri::command]
 pub fn overlay_ready(app: AppHandle) {
     mark_ready(&app);
+}
+
+#[tauri::command]
+pub fn set_overlay_position(app: AppHandle, position: String) -> Result<(), String> {
+    let position =
+        OverlayPosition::parse(&position).ok_or_else(|| "invalid overlay position".to_string())?;
+    let mut saved_position = OVERLAY_POSITION
+        .lock()
+        .map_err(|_| "could not update overlay position".to_string())?;
+    *saved_position = position;
+    drop(saved_position);
+
+    ensure_window(&app);
+    position_overlay(&app);
+    Ok(())
 }
 
 fn match_state(s: &str) -> &'static str {

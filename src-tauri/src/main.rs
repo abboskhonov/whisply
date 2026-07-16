@@ -15,7 +15,27 @@
 //                                          (use only for A/B testing — UX cost is severe)
 //
 // These MUST be set before tauri_native_lib::run() because GTK reads them at init.
+#[cfg(target_os = "linux")]
+fn use_x11_for_positionable_gnome_overlay() {
+    let is_gnome_wayland = std::env::var("XDG_SESSION_TYPE").as_deref() == Ok("wayland")
+        && std::env::var("XDG_CURRENT_DESKTOP")
+            .is_ok_and(|desktop| desktop.to_lowercase().contains("gnome"));
+
+    if is_gnome_wayland
+        && std::env::var_os("DISPLAY").is_some()
+        && std::env::var_os("GDK_BACKEND").is_none()
+    {
+        // GNOME does not support the layer-shell protocol and ignores Wayland
+        // window coordinates. XWayland is the only practical way to honor the
+        // overlay position setting on a GNOME Wayland session.
+        std::env::set_var("GDK_BACKEND", "x11");
+    }
+}
+
 fn main() {
+    #[cfg(target_os = "linux")]
+    use_x11_for_positionable_gnome_overlay();
+
     std::env::set_var("WEBKIT_FORCE_DMABUF_RENDERER", "1");
     // std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
     // std::env::set_var("WEBKIT_DISABLE_COMPOSITING_MODE", "1");

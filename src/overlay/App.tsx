@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react"
-import { emit, listen } from "@tauri-apps/api/event"
+import { listen } from "@tauri-apps/api/event"
 import { invoke } from "@tauri-apps/api/core"
 
 import {
@@ -11,7 +11,7 @@ import "./overlay.css"
 
 type OverlayState = "idle" | "recording" | "transcribing" | "denied"
 
-const BARS = 16
+const BARS = 7
 const FALLBACK_LEVELS = Array.from(
   { length: BARS },
   (_, index) => 0.18 + 0.08 * Math.sin(index * 0.7)
@@ -26,7 +26,6 @@ export function OverlayApp() {
   const [state, setState] = useState<OverlayState>("idle")
   const [levels, setLevels] = useState<number[]>(FALLBACK_LEVELS)
   const [elapsed, setElapsed] = useState(0)
-  const [shortcutKey, setShortcutKey] = useState("")
   const [errorMsg, setErrorMsg] = useState("")
   const [theme, setTheme] = useState<OverlayTheme>(overlayTheme)
   const elapsedStart = useRef<number | null>(null)
@@ -44,7 +43,6 @@ export function OverlayApp() {
         if (!mounted) return
         const next = event.payload.state
         setState(next)
-        if (event.payload.shortcut) setShortcutKey(event.payload.shortcut)
         if (event.payload.error) setErrorMsg(event.payload.error)
 
         if (next === "recording") {
@@ -112,73 +110,43 @@ export function OverlayApp() {
         aria-live="polite"
       >
         <div className="ov-pill-inner">
-          <div className="ov-state-mark" aria-hidden>
-            {isRecording ? (
-              <>
-                <span className="ov-dot-ping" />
-                <span className="ov-dot" />
-              </>
-            ) : state === "transcribing" ? (
-              <span className="ov-spinner" />
-            ) : state === "denied" ? (
-              <span className="ov-warn">!</span>
-            ) : null}
-          </div>
-
-          <div className="ov-copy">
-            <span
-              className={`ov-status ${state === "denied" ? "ov-status-err" : ""}`}
-            >
-              {isRecording
-                ? "Listening"
-                : state === "transcribing"
-                  ? "Transcribing"
-                  : errorMsg || "Microphone blocked"}
-            </span>
-            {isRecording ? (
-              <span className="ov-time">{formatElapsed(elapsed)}</span>
-            ) : null}
-          </div>
-
           {isRecording ? (
-            <div className="ov-bars" aria-hidden>
-              {Array.from({ length: BARS }).map((_, index) => {
-                const level = Math.min(1, levels[index] ?? 0)
-                const height = Math.max(3, Math.pow(level, 0.6) * 20)
-                return (
-                  <span
-                    key={index}
-                    className="ov-bar"
-                    style={{ height: `${height}px` }}
-                  />
-                )
-              })}
-            </div>
-          ) : null}
-
-          <div className="ov-actions">
-            {shortcutKey && isRecording ? (
-              <span className="ov-kbd">{shortcutKey}</span>
-            ) : null}
-            {visible ? (
-              <button
-                type="button"
-                className="ov-x"
-                onClick={() => void emit("whisply://overlay-cancel", {})}
-                aria-label="Cancel dictation"
-              >
-                <svg viewBox="0 0 12 12" aria-hidden>
-                  <path
-                    d="M2 2 L10 10 M10 2 L2 10"
-                    stroke="currentColor"
-                    strokeWidth="1.6"
-                    strokeLinecap="round"
-                    fill="none"
-                  />
-                </svg>
-              </button>
-            ) : null}
-          </div>
+            <>
+              <span className="ov-time">{formatElapsed(elapsed)}</span>
+              <div className="ov-bars" aria-hidden>
+                {Array.from({ length: BARS }).map((_, index) => {
+                  const level = Math.min(1, levels[index] ?? 0)
+                  const height = Math.max(3, Math.pow(level, 0.6) * 16)
+                  return (
+                    <span
+                      key={index}
+                      className="ov-bar"
+                      style={{ height: `${height}px` }}
+                    />
+                  )
+                })}
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="ov-state-mark" aria-hidden>
+                {state === "transcribing" ? (
+                  <span className="ov-spinner" />
+                ) : state === "denied" ? (
+                  <span className="ov-warn">!</span>
+                ) : null}
+              </div>
+              <div className="ov-copy">
+                <span
+                  className={`ov-status ${state === "denied" ? "ov-status-err" : ""}`}
+                >
+                  {state === "transcribing"
+                    ? "Transcribing"
+                    : errorMsg || "Microphone blocked"}
+                </span>
+              </div>
+            </>
+          )}
         </div>
       </div>
     </div>

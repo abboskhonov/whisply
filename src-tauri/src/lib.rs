@@ -15,7 +15,6 @@ use std::sync::Arc;
 
 
 use tauri::webview::PageLoadEvent;
-use tauri::Listener;
 use tauri::Manager;
 use tauri_plugin_global_shortcut::Builder as GlobalShortcutBuilder;
 use tauri_plugin_opener::OpenerExt;
@@ -123,14 +122,6 @@ pub fn run() {
                 log::info!("shortcut listener ready");
             }
 
-            // Listen for the overlay's cancel button and stop capture + hide.
-            // The cancel event is emitted from the overlay window with no
-            // payload — the user just wants out.
-            let h2 = handle.clone();
-            app.listen("whisply://overlay-cancel", move |_event| {
-                log::info!("overlay cancel received");
-                dictation::cancel(&h2);
-            });
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -151,6 +142,7 @@ pub fn run() {
             shortcut::unregister_shortcut_evdev,
             shortcut::unregister_all_shortcuts_evdev,
             overlay::overlay_ready,
+            overlay::set_overlay_position,
             audio::list_microphones,
             audio::start_audio_capture,
             audio::stop_audio_capture,
