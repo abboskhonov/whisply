@@ -8,12 +8,6 @@
 //   Driver:    Mesa 26.1.3 (Intel/iris)
 //   Session:   Wayland (Mutter)
 //
-// WebKitGTK perf knobs (only one is uncommented at a time; try in order):
-//   1. WEBKIT_FORCE_DMABUF_RENDERER=1   ← default: Wayland fast path, GPU→compositor buffer sharing
-//   2. WEBKIT_DISABLE_DMABUF_RENDERER=1  ← fallback if Mutter/DMABUF regresses (CPU-composited path)
-//   3. WEBKIT_DISABLE_COMPOSITING_MODE=1 ← nuclear option: forces single-paint, no layers
-//                                          (use only for A/B testing — UX cost is severe)
-//
 // These MUST be set before tauri_native_lib::run() because GTK reads them at init.
 #[cfg(target_os = "linux")]
 fn use_x11_for_positionable_gnome_overlay() {
@@ -32,12 +26,21 @@ fn use_x11_for_positionable_gnome_overlay() {
     }
 }
 
+fn configure_webkit_renderer() {
+    if std::env::var_os("APPIMAGE").is_some() {
+        // The AppImage bundles WebKitGTK and its GPU stack. Forcing DMA-BUF
+        // with the host compositor can make WebKit fail to create an EGL
+        // display, leaving the app window blank.
+        std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
+    } else {
+        std::env::set_var("WEBKIT_FORCE_DMABUF_RENDERER", "1");
+    }
+}
+
 fn main() {
     #[cfg(target_os = "linux")]
     use_x11_for_positionable_gnome_overlay();
 
-    std::env::set_var("WEBKIT_FORCE_DMABUF_RENDERER", "1");
-    // std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
-    // std::env::set_var("WEBKIT_DISABLE_COMPOSITING_MODE", "1");
+    configure_webkit_renderer();
     tauri_native_lib::run()
 }
