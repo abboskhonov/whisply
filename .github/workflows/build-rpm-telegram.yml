@@ -27,10 +27,18 @@ jobs:
           rustc --version
           cargo --version
 
-      - name: Restore Rust build cache
+      - name: Configure persistent Cargo target directory
+        run: |
+          target_dir="$HOME/.cache/whisply/cargo-target"
+          mkdir -p "$target_dir"
+          echo "CARGO_TARGET_DIR=$target_dir" >> "$GITHUB_ENV"
+
+      # Keep downloaded crates cached remotely, but compile into the VPS-local
+      # target directory above so checkout cleanup cannot discard build outputs.
+      - name: Restore Cargo dependency cache
         uses: Swatinem/rust-cache@v2
         with:
-          workspaces: src-tauri -> target
+          cache-targets: false
 
       - name: Install Bun
         uses: oven-sh/setup-bun@v2
@@ -63,7 +71,7 @@ jobs:
         run: |
           test -n "$TELEGRAM_BOT_TOKEN"
           test -n "$TELEGRAM_CHAT_ID"
-          rpm_file=$(find src-tauri/target/release/bundle/rpm -type f -name '*.rpm' -print -quit)
+          rpm_file=$(find "$CARGO_TARGET_DIR/release/bundle/rpm" -type f -name '*.rpm' -print -quit)
           test -n "$rpm_file"
           curl --fail --retry 3 --retry-all-errors \
             --form "chat_id=$TELEGRAM_CHAT_ID" \
