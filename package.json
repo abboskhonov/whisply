@@ -19,6 +19,7 @@
     "@tailwindcss/vite": "^4",
     "@tanstack/react-query": "^5.101.2",
     "@tanstack/react-router": "^1.170.17",
+    "@tanstack/react-virtual": "^3.14.6",
     "@tauri-apps/api": "^2",
     "@tauri-apps/plugin-autostart": "^2",
     "@tauri-apps/plugin-global-shortcut": "^2",

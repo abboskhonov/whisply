@@ -5,6 +5,7 @@ import {
   GearSix,
   Info,
   Keyboard,
+  Flask,
   Microphone,
   Palette,
   Sliders,
@@ -67,6 +68,12 @@ const SETTINGS_CATEGORIES = [
     label: "Advanced",
     icon: Sliders,
     description: "Power user options, logs, and diagnostics.",
+  },
+  {
+    id: "playground",
+    label: "Playground",
+    icon: Flask,
+    description: "Test dictation safely without inserting text elsewhere.",
   },
   {
     id: "about",

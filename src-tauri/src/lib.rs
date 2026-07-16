@@ -15,7 +15,7 @@ use std::sync::Arc;
 
 
 use tauri::webview::PageLoadEvent;
-use tauri::Manager;
+use tauri::{Manager, WindowEvent};
 use tauri_plugin_global_shortcut::Builder as GlobalShortcutBuilder;
 use tauri_plugin_opener::OpenerExt;
 use tauri_plugin_log::{Target, TargetKind};
@@ -89,6 +89,19 @@ pub fn run() {
                 let _ = webview.window().show();
             }
         })
+        .on_window_event(|window, event| {
+            if window.label() != "main" {
+                return;
+            }
+
+            if let WindowEvent::CloseRequested { api, .. } = event {
+                // The recording overlay is a hidden, independent window. Without
+                // an explicit app exit, closing main leaves that overlay process
+                // alive and a later launcher invocation has no main window to show.
+                api.prevent_close();
+                window.app_handle().exit(0);
+            }
+        })
         .setup(|app| {
             #[cfg(desktop)]
             {
@@ -156,6 +169,8 @@ pub fn run() {
             snippets::list_snippets,
             snippets::add_snippet,
             snippets::delete_snippet,
+            dictation::start_playground_dictation,
+            dictation::stop_playground_dictation,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

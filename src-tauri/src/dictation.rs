@@ -46,6 +46,14 @@ pub fn start(app: &AppHandle, shortcut_key: &str) -> Result<(), String> {
 }
 
 pub fn finish(app: &AppHandle) -> Result<(), String> {
+    finish_with_insertion(app, true)
+}
+
+pub fn finish_for_playground(app: &AppHandle) -> Result<(), String> {
+    finish_with_insertion(app, false)
+}
+
+fn finish_with_insertion(app: &AppHandle, should_insert: bool) -> Result<(), String> {
     let (stopped, audio) = crate::audio::stop_and_take_audio(app)?;
     if stopped.reason == "not_running" {
         // A release can arrive after a dev restart or cancellation without a
@@ -91,18 +99,21 @@ pub fn finish(app: &AppHandle) -> Result<(), String> {
                     }
                     None => text,
                 };
-                // Remove the overlay before injecting text. Even though the
-                // window is configured as non-focusable, hiding it gives GNOME
-                // a chance to restore the previous Telegram/editor focus if the
-                // compositor activated it while it was shown.
+                // Remove the overlay before inserting text. The Playground
+                // follows the same capture/transcription flow but keeps its
+                // result in-app so testing never types into another application.
                 crate::overlay::hide(&app);
-                std::thread::sleep(std::time::Duration::from_millis(150));
-                let insertion = crate::input::insert_text_locally(&app, &text)?;
+                let insertion_method = if should_insert {
+                    std::thread::sleep(std::time::Duration::from_millis(150));
+                    crate::input::insert_text_locally(&app, &text)?.method.to_string()
+                } else {
+                    "playground".to_string()
+                };
                 Ok(DictationResult {
                     text,
                     audio_duration_ms,
                     transcription_duration_ms: started.elapsed().as_millis() as u64,
-                    insertion_method: insertion.method.to_string(),
+                    insertion_method,
                 })
             });
 
@@ -148,4 +159,14 @@ pub fn finish(app: &AppHandle) -> Result<(), String> {
         }
     });
     Ok(())
+}
+
+#[tauri::command]
+pub fn start_playground_dictation(app: AppHandle) -> Result<(), String> {
+    start(&app, "Playground")
+}
+
+#[tauri::command]
+pub fn stop_playground_dictation(app: AppHandle) -> Result<(), String> {
+    finish_for_playground(&app)
 }

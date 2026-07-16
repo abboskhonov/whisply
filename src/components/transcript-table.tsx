@@ -36,17 +36,14 @@ type TranscriptRowProps = {
   time: string
   text?: string | null
   actions?: React.ReactNode
-  className?: string
-}
+} & Omit<React.ComponentPropsWithoutRef<"li">, "children">
 
-export function TranscriptRow({
-  time,
-  text,
-  actions,
-  className,
-}: TranscriptRowProps) {
+export const TranscriptRow = React.forwardRef<
+  HTMLLIElement,
+  TranscriptRowProps
+>(function TranscriptRow({ time, text, actions, className, ...props }, ref) {
   return (
-    <li className={cn("group/row", className)}>
+    <li ref={ref} className={cn("group/row", className)} {...props}>
       <div className="grid grid-cols-[5.5rem_1fr_auto] items-center gap-4 px-4 py-3 transition-colors group-hover/row:bg-muted/60">
         <time className="text-xs font-medium tabular-nums text-muted-foreground">
           {time}
@@ -72,4 +69,4 @@ export function TranscriptRow({
       </div>
     </li>
   )
-}
+})

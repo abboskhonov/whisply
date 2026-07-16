@@ -18,6 +18,7 @@ import { Route as settingsShortcutRoute } from "@/routes/settings/shortcut"
 import { Route as settingsTextInsertionRoute } from "@/routes/settings/text-insertion"
 import { Route as settingsAppearanceRoute } from "@/routes/settings/appearance"
 import { Route as settingsAdvancedRoute } from "@/routes/settings/advanced"
+import { Route as settingsPlaygroundRoute } from "@/routes/settings/playground"
 import { Route as settingsAboutRoute } from "@/routes/settings/about"
 
 const routeTree = rootRoute.addChildren([
@@ -36,6 +37,7 @@ const routeTree = rootRoute.addChildren([
     settingsTextInsertionRoute,
     settingsAppearanceRoute,
     settingsAdvancedRoute,
+    settingsPlaygroundRoute,
     settingsAboutRoute,
   ]),
 ])

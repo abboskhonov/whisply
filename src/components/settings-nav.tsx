@@ -4,6 +4,7 @@ import {
   GearSix,
   Info,
   Keyboard,
+  Flask,
   Microphone,
   Palette,
   Sliders,
@@ -62,6 +63,12 @@ const SETTINGS_NAV_ITEMS: SettingsNavItem[] = [
     label: "Advanced",
     to: "/settings/advanced",
     icon: Sliders,
+  },
+  {
+    id: "playground",
+    label: "Playground",
+    to: "/settings/playground",
+    icon: Flask,
   },
   { id: "about", label: "About", to: "/settings/about", icon: Info },
 ]

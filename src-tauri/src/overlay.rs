@@ -1,5 +1,5 @@
 use serde::Serialize;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Mutex;
 use tauri::{AppHandle, Emitter, Manager, WebviewUrl, WebviewWindowBuilder};
 
@@ -50,6 +50,7 @@ impl OverlayPosition {
 /// Pending overlay state to show once the webview is ready.
 static PENDING_STATE: Mutex<Option<PendingOverlay>> = Mutex::new(None);
 static OVERLAY_READY: AtomicBool = AtomicBool::new(false);
+static OVERLAY_REVISION: AtomicU64 = AtomicU64::new(0);
 static OVERLAY_POSITION: Mutex<OverlayPosition> = Mutex::new(OverlayPosition::TopCenter);
 #[cfg(target_os = "linux")]
 static LAYER_SHELL_INITIALIZED: AtomicBool = AtomicBool::new(false);
@@ -351,6 +352,7 @@ fn match_state(s: &str) -> &'static str {
 /// stashed and applied once `mark_ready()` fires. This prevents the
 /// "shortcut pressed before overlay loaded" race.
 pub fn show(app: &AppHandle, state: &str, device: &str, shortcut: &str) {
+    OVERLAY_REVISION.fetch_add(1, Ordering::SeqCst);
     ensure_window(app);
     position_overlay(app);
 
@@ -398,6 +400,7 @@ pub fn show(app: &AppHandle, state: &str, device: &str, shortcut: &str) {
 
 /// Hide the overlay window and reset the UI to idle.
 pub fn hide(app: &AppHandle) {
+    OVERLAY_REVISION.fetch_add(1, Ordering::SeqCst);
     let _ = app.emit_to(
         OVERLAY_LABEL,
         "whisply://audio-state",
@@ -416,6 +419,7 @@ pub fn hide(app: &AppHandle) {
 
 /// Push a state transition (e.g. recording → transcribing) without hiding.
 pub fn set_state(app: &AppHandle, state: &str, error: Option<&str>) {
+    OVERLAY_REVISION.fetch_add(1, Ordering::SeqCst);
     let _ = app.emit_to(
         OVERLAY_LABEL,
         "whisply://audio-state",
@@ -429,6 +433,7 @@ pub fn set_state(app: &AppHandle, state: &str, error: Option<&str>) {
 }
 
 pub fn emit_error(app: &AppHandle, message: &str) {
+    let revision = OVERLAY_REVISION.fetch_add(1, Ordering::SeqCst) + 1;
     ensure_window(app);
     position_overlay(app);
     if let Some(window) = app.get_webview_window(OVERLAY_LABEL) {
@@ -446,4 +451,15 @@ pub fn emit_error(app: &AppHandle, message: &str) {
             error: message.to_string(),
         },
     );
+
+    // Shortcut failures may not enter the dictation pipeline, so they do not
+    // have a completion callback to dismiss the overlay. Hide this transient
+    // error unless a newer recording or state transition has superseded it.
+    let app = app.clone();
+    std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_secs(3));
+        if OVERLAY_REVISION.load(Ordering::SeqCst) == revision {
+            hide(&app);
+        }
+    });
 }

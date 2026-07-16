@@ -1,11 +1,6 @@
 :root {
-  --ov-surface: oklch(0.16 0.006 260);
-  --ov-text: oklch(0.94 0.004 260);
-  --ov-muted: oklch(0.67 0.01 260);
-  --ov-accent: oklch(0.72 0.15 18);
-  --ov-warning: oklch(0.78 0.14 75);
-  --ov-danger: oklch(0.72 0.16 25);
-  --ov-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --ov-surface: #090909;
+  --ov-accent: #f8f8f8;
 }
 
 * {
@@ -23,9 +18,7 @@ body,
 
 body {
   overflow: hidden;
-  color: var(--ov-text);
   font-family: "Inter Variable", system-ui, sans-serif;
-  font-feature-settings: "cv11", "ss01", "tnum";
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   user-select: none;
@@ -37,140 +30,112 @@ body {
   height: 100%;
   align-items: flex-start;
   justify-content: center;
-  padding-top: 12px;
+  padding-top: 10px;
   pointer-events: none;
 }
 
 .ov-stage[data-theme="signal"] {
-  --ov-surface: oklch(0.16 0.025 255);
-  --ov-accent: oklch(0.73 0.13 230);
-  --ov-warning: oklch(0.78 0.11 210);
+  --ov-accent: #9dd4ff;
 }
 
 .ov-stage[data-theme="ember"] {
-  --ov-surface: oklch(0.16 0.018 65);
-  --ov-accent: oklch(0.78 0.14 75);
+  --ov-accent: #ffd59a;
 }
 
 .ov-pill {
-  min-width: 128px;
-  pointer-events: auto;
-  border-radius: 10px;
+  display: grid;
+  width: 66px;
+  height: 30px;
+  place-items: center;
+  border-radius: 25px;
   background: var(--ov-surface);
-  box-shadow: 0 6px 16px oklch(0 0 0 / 24%);
-  transform-origin: top center;
-  transition:
-    opacity 180ms var(--ov-ease),
-    transform 180ms var(--ov-ease);
+  box-shadow: 0 8px 18px rgb(0 0 0 / 28%);
+  opacity: 1;
 }
 
 .ov-pill.is-closed {
   opacity: 0;
-  pointer-events: none;
-  transform: translateY(-6px) scale(0.98);
 }
 
-.ov-pill.is-open {
-  opacity: 1;
-  transform: translateY(0) scale(1);
+.ov-pill.is-message {
+  width: fit-content;
+  min-width: 132px;
+  height: 36px;
+  padding: 0 14px;
+  border-radius: 18px;
 }
 
-.ov-pill-inner {
-  display: flex;
-  min-height: 48px;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 12px;
-}
-
-.ov-state-mark {
-  display: grid;
-  width: 10px;
-  height: 10px;
-  flex: 0 0 10px;
-  place-items: center;
-}
-
-.ov-spinner {
-  width: 10px;
-  height: 10px;
-  border: 1.5px solid oklch(1 0 0 / 18%);
-  border-top-color: var(--ov-warning);
-  border-radius: 999px;
-  animation: ov-spin 700ms linear infinite;
-}
-
-.ov-warn {
-  display: grid;
-  width: 10px;
-  height: 10px;
-  place-items: center;
-  border-radius: 999px;
-  background: var(--ov-danger);
-  color: oklch(0.98 0 0);
-  font-size: 8px;
-  font-weight: 700;
-  line-height: 1;
-}
-
-.ov-copy {
-  display: flex;
-  min-width: 0;
-  align-items: baseline;
-  gap: 7px;
-  white-space: nowrap;
-}
-
-.ov-status {
-  overflow: hidden;
-  color: var(--ov-text);
-  font-size: 12px;
+.ov-error-message {
+  color: var(--ov-accent);
+  font-size: 11px;
   font-weight: 600;
   letter-spacing: -0.01em;
-  text-overflow: ellipsis;
-}
-
-.ov-status-err {
-  max-width: 178px;
-  color: var(--ov-danger);
-}
-
-.ov-time {
-  flex: 0 0 auto;
-  color: var(--ov-muted);
-  font-size: 11px;
-  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 .ov-bars {
   display: flex;
-  height: 18px;
-  flex: 1 1 auto;
+  height: 20px;
   align-items: center;
-  justify-content: flex-end;
   gap: 3px;
 }
 
 .ov-bar {
-  width: 2px;
+  width: 3px;
+  height: 18px;
   border-radius: 999px;
   background: var(--ov-accent);
-  transition: height 80ms linear;
+  transform-origin: center;
+  transition: transform 80ms linear;
 }
 
-@keyframes ov-spin {
-  to {
-    transform: rotate(1turn);
+.ov-bars.is-loading .ov-bar {
+  transform: scaleY(0.24);
+  animation: ov-loading-wave 900ms ease-in-out infinite both;
+}
+
+.ov-bars.is-loading .ov-bar:nth-child(2) {
+  animation-delay: 70ms;
+}
+
+.ov-bars.is-loading .ov-bar:nth-child(3) {
+  animation-delay: 140ms;
+}
+
+.ov-bars.is-loading .ov-bar:nth-child(4) {
+  animation-delay: 210ms;
+}
+
+.ov-bars.is-loading .ov-bar:nth-child(5) {
+  animation-delay: 280ms;
+}
+
+.ov-bars.is-loading .ov-bar:nth-child(6) {
+  animation-delay: 350ms;
+}
+
+.ov-bars.is-loading .ov-bar:nth-child(7) {
+  animation-delay: 420ms;
+}
+
+@keyframes ov-loading-wave {
+  0%,
+  100% {
+    transform: scaleY(0.24);
+  }
+
+  50% {
+    transform: scaleY(1);
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .ov-pill,
   .ov-bar {
     transition: none;
   }
 
-  .ov-spinner {
+  .ov-bars.is-loading .ov-bar {
     animation: none;
+    transform: scaleY(0.58);
   }
 }

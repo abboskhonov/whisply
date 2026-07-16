@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useState } from "react"
 import { listen } from "@tauri-apps/api/event"
 import { invoke } from "@tauri-apps/api/core"
 
@@ -17,18 +17,22 @@ const FALLBACK_LEVELS = Array.from(
   (_, index) => 0.18 + 0.08 * Math.sin(index * 0.7)
 )
 
-function formatElapsed(seconds: number): string {
-  const secondsRounded = Math.max(0, Math.floor(seconds))
-  return `${Math.floor(secondsRounded / 60)}:${String(secondsRounded % 60).padStart(2, "0")}`
+function errorLabel(message: string) {
+  if (
+    message.toLowerCase().includes("no speech") ||
+    message.toLowerCase().includes("no microphone audio")
+  ) {
+    return "No words heard"
+  }
+
+  return "Couldn't hear that"
 }
 
 export function OverlayApp() {
   const [state, setState] = useState<OverlayState>("idle")
   const [levels, setLevels] = useState<number[]>(FALLBACK_LEVELS)
-  const [elapsed, setElapsed] = useState(0)
-  const [errorMsg, setErrorMsg] = useState("")
+  const [errorMessage, setErrorMessage] = useState("")
   const [theme, setTheme] = useState<OverlayTheme>(overlayTheme)
-  const elapsedStart = useRef<number | null>(null)
 
   useEffect(() => {
     const unsubs: Array<() => void> = []
@@ -37,22 +41,16 @@ export function OverlayApp() {
     ;(async () => {
       const audioStateUnlisten = await listen<{
         state: OverlayState
-        shortcut?: string
         error?: string
-      }>("whisply://audio-state", (event) => {
-        if (!mounted) return
-        const next = event.payload.state
-        setState(next)
-        if (event.payload.error) setErrorMsg(event.payload.error)
-
-        if (next === "recording") {
-          elapsedStart.current = performance.now()
-        } else {
-          elapsedStart.current = null
-          setElapsed(0)
-          if (next === "idle") setLevels(FALLBACK_LEVELS)
+      }>(
+        "whisply://audio-state",
+        (event) => {
+          if (!mounted) return
+          setState(event.payload.state)
+          setErrorMessage(event.payload.error ?? "")
+          if (event.payload.state === "idle") setLevels(FALLBACK_LEVELS)
         }
-      })
+      )
       unsubs.push(audioStateUnlisten)
 
       const micLevelUnlisten = await listen<{ levels: number[] }>(
@@ -80,22 +78,7 @@ export function OverlayApp() {
     }
   }, [])
 
-  useEffect(() => {
-    if (state !== "recording" || elapsedStart.current == null) return
-
-    let animationFrame = 0
-    const tick = () => {
-      if (elapsedStart.current != null) {
-        setElapsed((performance.now() - elapsedStart.current) / 1000)
-        animationFrame = requestAnimationFrame(tick)
-      }
-    }
-    animationFrame = requestAnimationFrame(tick)
-    return () => cancelAnimationFrame(animationFrame)
-  }, [state])
-
   const visible = state !== "idle"
-  const isRecording = state === "recording"
 
   return (
     <div
@@ -105,49 +88,40 @@ export function OverlayApp() {
       data-theme={theme}
     >
       <div
-        className={`ov-pill ${visible ? "is-open" : "is-closed"}`}
-        role="status"
-        aria-live="polite"
+        className={`ov-pill ${visible ? "is-open" : "is-closed"} ${
+          state === "denied" ? "is-message" : ""
+        }`}
+        aria-label={
+          state === "recording"
+            ? "Recording in progress"
+            : state === "transcribing"
+              ? "Transcribing recording"
+              : errorLabel(errorMessage)
+        }
       >
-        <div className="ov-pill-inner">
-          {isRecording ? (
-            <>
-              <span className="ov-time">{formatElapsed(elapsed)}</span>
-              <div className="ov-bars" aria-hidden>
-                {Array.from({ length: BARS }).map((_, index) => {
-                  const level = Math.min(1, levels[index] ?? 0)
-                  const height = Math.max(3, Math.pow(level, 0.6) * 16)
-                  return (
-                    <span
-                      key={index}
-                      className="ov-bar"
-                      style={{ height: `${height}px` }}
-                    />
-                  )
-                })}
-              </div>
-            </>
-          ) : (
-            <>
-              <div className="ov-state-mark" aria-hidden>
-                {state === "transcribing" ? (
-                  <span className="ov-spinner" />
-                ) : state === "denied" ? (
-                  <span className="ov-warn">!</span>
-                ) : null}
-              </div>
-              <div className="ov-copy">
+        {state === "recording" ? (
+          <div className="ov-bars" aria-hidden>
+            {Array.from({ length: BARS }).map((_, index) => {
+              const level = Math.min(1, (levels[index] ?? 0) * 2.25)
+              const scale = Math.max(0.18, Math.pow(level, 0.45))
+              return (
                 <span
-                  className={`ov-status ${state === "denied" ? "ov-status-err" : ""}`}
-                >
-                  {state === "transcribing"
-                    ? "Transcribing"
-                    : errorMsg || "Microphone blocked"}
-                </span>
-              </div>
-            </>
-          )}
-        </div>
+                  key={index}
+                  className="ov-bar"
+                  style={{ transform: `scaleY(${scale})` }}
+                />
+              )
+            })}
+          </div>
+        ) : state === "transcribing" ? (
+          <div className="ov-bars is-loading" aria-hidden>
+            {Array.from({ length: BARS }).map((_, index) => (
+              <span key={index} className="ov-bar" />
+            ))}
+          </div>
+        ) : (
+          <span className="ov-error-message">{errorLabel(errorMessage)}</span>
+        )}
       </div>
     </div>
   )

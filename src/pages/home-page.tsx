@@ -1,4 +1,6 @@
+import * as React from "react"
 import { TrendUp } from "@phosphor-icons/react"
+import { useVirtualizer } from "@tanstack/react-virtual"
 
 import { PageHeader, PageShell, Section } from "@/components/page"
 import { StatCard, StatGrid } from "@/components/stats"
@@ -86,34 +88,64 @@ export function HomePage() {
         ) : (
           <div className="flex flex-col gap-6">
             {todayDictations.length > 0 ? (
-              <TranscriptGroup label="Today" count={todayDictations.length}>
-                {todayDictations.map((dictation) => (
-                  <TranscriptRow
-                    key={dictation.id}
-                    time={formatTime(dictation.created_at_ms)}
-                    text={dictation.text}
-                  />
-                ))}
-              </TranscriptGroup>
+              <VirtualTranscriptGroup
+                label="Today"
+                dictations={todayDictations}
+              />
             ) : null}
             {yesterdayDictations.length > 0 ? (
-              <TranscriptGroup
+              <VirtualTranscriptGroup
                 label="Yesterday"
-                count={yesterdayDictations.length}
-              >
-                {yesterdayDictations.map((dictation) => (
-                  <TranscriptRow
-                    key={dictation.id}
-                    time={formatTime(dictation.created_at_ms)}
-                    text={dictation.text}
-                  />
-                ))}
-              </TranscriptGroup>
+                dictations={yesterdayDictations}
+              />
             ) : null}
           </div>
         )}
       </Section>
     </PageShell>
+  )
+}
+
+type VirtualTranscriptGroupProps = {
+  label: string
+  dictations: StoredDictation[]
+}
+
+function VirtualTranscriptGroup({
+  label,
+  dictations,
+}: VirtualTranscriptGroupProps) {
+  const parentRef = React.useRef<HTMLDivElement>(null)
+  const virtualizer = useVirtualizer<HTMLDivElement, HTMLLIElement>({
+    count: dictations.length,
+    getScrollElement: () => parentRef.current,
+    estimateSize: () => 56,
+    getItemKey: (index) => dictations[index].id,
+    overscan: 8,
+  })
+
+  return (
+    <TranscriptGroup label={label} count={dictations.length}>
+      <div ref={parentRef} className="max-h-[32rem] overflow-y-auto">
+        <ul className="relative" style={{ height: virtualizer.getTotalSize() }}>
+          {virtualizer.getVirtualItems().map((virtualItem) => {
+            const dictation = dictations[virtualItem.index]
+
+            return (
+              <TranscriptRow
+                key={virtualItem.key}
+                ref={virtualizer.measureElement}
+                data-index={virtualItem.index}
+                className="absolute w-full border-b border-border/60 last:border-b-0"
+                style={{ transform: `translateY(${virtualItem.start}px)` }}
+                time={formatTime(dictation.created_at_ms)}
+                text={dictation.text}
+              />
+            )
+          })}
+        </ul>
+      </div>
+    </TranscriptGroup>
   )
 }
 

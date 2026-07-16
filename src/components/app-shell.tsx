@@ -2,12 +2,9 @@ import * as React from "react"
 import { useLocation } from "@tanstack/react-router"
 
 import { cn } from "@/lib/utils"
-import {
-  SidebarInset,
-  SidebarProvider,
-  SidebarTrigger,
-} from "@/components/ui/sidebar"
+import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar"
 import { AppSidebar } from "@/components/app-sidebar"
+import { Titlebar } from "@/components/titlebar"
 import { useDictation } from "@/hooks/use-dictation"
 
 const ROUTE_TITLES: Record<string, string> = {
@@ -56,7 +53,6 @@ export function AppShellHeader({
         className
       )}
     >
-      <SidebarTrigger className="-ml-1 size-7 text-muted-foreground hover:text-foreground" />
       <div className="flex min-w-0 flex-1 items-center gap-2">
         <span className="truncate text-[13.5px] font-medium text-foreground/90">
           {title ?? routeTitle}
@@ -86,21 +82,24 @@ export function Layout({
   useDictation()
 
   return (
-    <SidebarProvider
-      defaultOpen={true}
-      className={cn("h-svh", className)}
-      {...providerProps}
-    >
-      <AppSidebar />
-      <SidebarInset>
-        <AppShellHeader {...(header ?? {})} />
-        <div
-          data-ui-scroll-container
-          className="flex min-h-0 flex-1 flex-col bg-background will-change-transform"
-        >
-          {children}
-        </div>
-      </SidebarInset>
-    </SidebarProvider>
+    <div className="flex h-svh min-h-0 flex-col">
+      <Titlebar />
+      <SidebarProvider
+        defaultOpen={true}
+        className={cn("min-h-0 flex-1", className)}
+        {...providerProps}
+      >
+        <AppSidebar />
+        <SidebarInset>
+          <AppShellHeader {...(header ?? {})} />
+          <div
+            data-ui-scroll-container
+            className="flex min-h-0 flex-1 flex-col bg-background will-change-transform"
+          >
+            {children}
+          </div>
+        </SidebarInset>
+      </SidebarProvider>
+    </div>
   )
 }

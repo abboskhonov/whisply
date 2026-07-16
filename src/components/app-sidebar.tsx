@@ -1,11 +1,7 @@
 import * as React from "react"
 import { useLocation, useNavigate } from "@tanstack/react-router"
 
-import {
-  Sidebar,
-  SidebarHeader,
-  SidebarRail,
-} from "@/components/ui/sidebar"
+import { Sidebar, SidebarHeader } from "@/components/ui/sidebar"
 import { AppBrand } from "@/components/nav-header"
 import { SidebarNav } from "@/components/sidebar-nav"
 import { SettingsSidebarPanel } from "@/components/settings-nav"
@@ -33,13 +29,12 @@ export function AppSidebar() {
   }, [settingsOpen, navigate])
 
   return (
-    <Sidebar variant="sidebar" collapsible="icon" className="border-r-0">
+    <Sidebar variant="sidebar" collapsible="none" className="border-r-0">
       <SidebarHeader className="p-2 pb-1">
         {settingsOpen ? null : <AppBrand />}
       </SidebarHeader>
       {settingsOpen ? <SettingsSidebarPanel /> : <SidebarNav />}
       <SidebarFooterNav isOpen={settingsOpen} onToggle={toggle} />
-      <SidebarRail />
     </Sidebar>
   )
 }
