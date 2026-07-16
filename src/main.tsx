@@ -13,6 +13,7 @@ import { DictationQuerySynchronizer } from "@/components/dictation-query-synchro
 import { ThemeProvider } from "@/components/theme-provider.tsx"
 import { ExternalLinkGuard } from "./components/external-link-guard.tsx"
 import { DebugPanel } from "./components/debug-panel.tsx"
+import { AppUpdater } from "@/components/app-updater"
 import { Toaster } from "@/components/ui/sonner"
 
 const rootEl = document.getElementById("root")!
@@ -30,6 +31,7 @@ createRoot(rootEl).render(
       <DictationQuerySynchronizer />
       <ThemeProvider>
         <ExternalLinkGuard />
+        <AppUpdater />
         <Toaster position="bottom-right" richColors />
         {import.meta.env.DEV ? <DebugPanel /> : null}
         <RouterProvider router={router} />

@@ -20,6 +20,8 @@
     "core:event:allow-emit-to",
     "opener:default",
     "log:default",
+    "process:default",
+    "updater:default",
     "global-shortcut:default",
     "global-shortcut:allow-register",
     "global-shortcut:allow-unregister",

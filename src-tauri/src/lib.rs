@@ -65,6 +65,7 @@ pub fn run() {
                 .build(),
         )
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_process::init())
         .plugin(GlobalShortcutBuilder::new().build())
         .plugin(external_navigation_plugin());
 
@@ -149,6 +150,8 @@ pub fn run() {
                     tauri_plugin_autostart::MacosLauncher::LaunchAgent,
                     None,
                 ));
+                app.handle()
+                    .plugin(tauri_plugin_updater::Builder::new().build())?;
             }
 
             // The overlay is created dynamically so there is exactly one
@@ -182,6 +185,7 @@ pub fn run() {
             system::get_system_info,
             system::get_microphone_status,
             system::get_input_status,
+            system::get_update_channel,
             system::get_evdev_access_status,
             system::fix_evdev_permissions,
             models::list_models,

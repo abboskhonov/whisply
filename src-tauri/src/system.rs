@@ -25,6 +25,15 @@ pub struct InputStatus {
     pub wayland: bool,
 }
 
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum UpdateChannel {
+    AppImage,
+    Rpm,
+    Deb,
+    Unsupported,
+}
+
 fn read_os_release() -> String {
     let content = std::fs::read_to_string("/etc/os-release")
         .or_else(|_| std::fs::read_to_string("/usr/lib/os-release"))
@@ -154,6 +163,34 @@ pub fn check_input() -> InputStatus {
     }
 }
 
+fn package_owns_executable(command: &str, flag: &str) -> bool {
+    let Ok(executable) = std::env::current_exe() else {
+        return false;
+    };
+
+    Command::new(command)
+        .arg(flag)
+        .arg(executable)
+        .output()
+        .is_ok_and(|output| output.status.success())
+}
+
+pub fn update_channel() -> UpdateChannel {
+    if std::env::var_os("APPIMAGE").is_some() {
+        return UpdateChannel::AppImage;
+    }
+
+    if package_owns_executable("rpm", "-qf") {
+        return UpdateChannel::Rpm;
+    }
+
+    if package_owns_executable("dpkg-query", "-S") {
+        return UpdateChannel::Deb;
+    }
+
+    UpdateChannel::Unsupported
+}
+
 #[tauri::command]
 pub fn get_system_info() -> SystemInfo {
     check_system()
@@ -167,6 +204,11 @@ pub fn get_microphone_status() -> MicrophoneStatus {
 #[tauri::command]
 pub fn get_input_status() -> InputStatus {
     check_input()
+}
+
+#[tauri::command]
+pub fn get_update_channel() -> UpdateChannel {
+    update_channel()
 }
 
 // ── Evdev / global shortcut access checks ────────────────────────────────────

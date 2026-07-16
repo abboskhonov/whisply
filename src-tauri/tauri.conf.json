@@ -46,6 +46,7 @@
   "bundle": {
     "active": true,
     "targets": "all",
+    "createUpdaterArtifacts": true,
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
@@ -58,12 +59,7 @@
         "depends": []
       },
       "rpm": {
-        "depends": [
-          "webkit2gtk4.1",
-          "gtk3",
-          "librsvg2",
-          "openssl"
-        ]
+        "depends": ["webkit2gtk4.1", "gtk3", "librsvg2", "openssl"]
       },
       "appimage": {}
     },
@@ -72,5 +68,13 @@
     "license": null,
     "homepage": null,
     "category": "Utility"
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEY1MjUwMjc4NUY0RTM2QzEKUldUQk5rNWZlQUlsOVhzTXpUN1hJSlFDcUVlODVVbGRyR09NNnRtYk8vMFZPLzJuVjRMZUpxR1cK",
+      "endpoints": [
+        "https://github.com/abboskhonov/whisply/releases/latest/download/latest.json"
+      ]
+    }
   }
 }
