@@ -5,21 +5,71 @@ use tauri::{AppHandle, Emitter, Manager};
 
 pub struct DictationState {
     generation: AtomicU64,
+    cancellable_generation: AtomicU64,
+    cancelled_generation: AtomicU64,
 }
 
 impl DictationState {
     pub fn new() -> Self {
         Self {
             generation: AtomicU64::new(0),
+            cancellable_generation: AtomicU64::new(0),
+            cancelled_generation: AtomicU64::new(0),
         }
     }
 
     fn begin_session(&self) -> u64 {
+        self.cancellable_generation.store(0, Ordering::SeqCst);
         self.generation.fetch_add(1, Ordering::SeqCst) + 1
     }
 
     fn is_current(&self, generation: u64) -> bool {
         self.generation.load(Ordering::SeqCst) == generation
+    }
+
+    fn is_active(&self, generation: u64) -> bool {
+        self.is_current(generation)
+            && self.cancelled_generation.load(Ordering::SeqCst) != generation
+    }
+
+    fn make_cancellable(&self, generation: u64) -> bool {
+        self.is_active(generation)
+            && self
+                .cancellable_generation
+                .compare_exchange(0, generation, Ordering::SeqCst, Ordering::SeqCst)
+                .is_ok()
+    }
+
+    fn cancel_pending(&self) -> bool {
+        let generation = self.cancellable_generation.load(Ordering::SeqCst);
+        generation != 0
+            && self.is_current(generation)
+            && self
+                .cancellable_generation
+                .compare_exchange(generation, 0, Ordering::SeqCst, Ordering::SeqCst)
+                .is_ok()
+            && {
+                self.cancelled_generation
+                    .store(generation, Ordering::SeqCst);
+                true
+            }
+    }
+
+    fn commit_pending(&self, generation: u64) -> bool {
+        self.is_active(generation)
+            && self
+                .cancellable_generation
+                .compare_exchange(generation, 0, Ordering::SeqCst, Ordering::SeqCst)
+                .is_ok()
+    }
+
+    fn clear_pending(&self, generation: u64) {
+        let _ = self.cancellable_generation.compare_exchange(
+            generation,
+            0,
+            Ordering::SeqCst,
+            Ordering::SeqCst,
+        );
     }
 }
 
@@ -40,6 +90,7 @@ pub fn start(app: &AppHandle, shortcut_key: &str) -> Result<(), String> {
     // Fail before opening the microphone if onboarding has not installed a model.
     app.state::<crate::models::ModelManager>()
         .selected_model_dir(app)?;
+    crate::shortcut::disable_cancel_shortcut(app);
     app.state::<DictationState>().begin_session();
     crate::overlay::show(app, "recording", "", shortcut_key);
     crate::audio::start_audio_capture(app.clone(), None).map(|_| ())
@@ -51,6 +102,17 @@ pub fn finish(app: &AppHandle) -> Result<(), String> {
 
 pub fn finish_for_playground(app: &AppHandle) -> Result<(), String> {
     finish_with_insertion(app, false)
+}
+
+pub fn cancel_pending(app: &AppHandle) -> bool {
+    if !app.state::<DictationState>().cancel_pending() {
+        return false;
+    }
+
+    crate::shortcut::disable_cancel_shortcut(app);
+    crate::overlay::hide(app);
+    log::info!("dictation cancellation requested");
+    true
 }
 
 fn finish_with_insertion(app: &AppHandle, should_insert: bool) -> Result<(), String> {
@@ -66,56 +128,74 @@ fn finish_with_insertion(app: &AppHandle, should_insert: bool) -> Result<(), Str
         return Err("No microphone audio was captured".to_string());
     }
 
-    let generation = app.state::<DictationState>().generation.load(Ordering::SeqCst);
+    let generation = app
+        .state::<DictationState>()
+        .generation
+        .load(Ordering::SeqCst);
+    if !app.state::<DictationState>().make_cancellable(generation) {
+        crate::overlay::hide(app);
+        return Ok(());
+    }
+    crate::shortcut::enable_cancel_shortcut(app, generation);
     let app = app.clone();
     std::thread::spawn(move || {
-        let audio_duration_ms =
-            audio.samples.len() as u64 * 1000 / audio.sample_rate.max(1) as u64;
+        let audio_duration_ms = audio.samples.len() as u64 * 1000 / audio.sample_rate.max(1) as u64;
         let started = Instant::now();
         let transcription = app.state::<crate::transcription::TranscriptionState>();
         let result = transcription.transcribe(&app, &audio.samples, audio.sample_rate);
-        transcription.unload();
+        transcription.schedule_unload(app.clone());
 
         let result = result.and_then(|text| {
-                if text.trim().is_empty() {
-                    return Err("No speech was detected".to_string());
-                }
-                if !app.state::<DictationState>().is_current(generation) {
-                    return Err("Dictation was cancelled".to_string());
-                }
-                let text = match app
-                    .state::<crate::snippets::SnippetStore>()
-                    .resolve_spoken_command(&text)
-                {
-                    Some(snippet) => {
-                        if let Err(error) = app
-                            .state::<crate::snippets::SnippetStore>()
-                            .mark_used(snippet.id)
-                        {
-                            log::error!("could not update snippet usage: {error}");
-                        }
-                        log::info!("expanded spoken snippet command: {}", snippet.name);
-                        snippet.body
+            if text.trim().is_empty() {
+                return Err("No speech was detected".to_string());
+            }
+            if !app.state::<DictationState>().is_active(generation) {
+                return Err("Dictation was cancelled".to_string());
+            }
+            let text = match app
+                .state::<crate::snippets::SnippetStore>()
+                .resolve_spoken_command(&text)
+            {
+                Some(snippet) => {
+                    if let Err(error) = app
+                        .state::<crate::snippets::SnippetStore>()
+                        .mark_used(snippet.id)
+                    {
+                        log::error!("could not update snippet usage: {error}");
                     }
-                    None => text,
-                };
-                // Remove the overlay before inserting text. The Playground
-                // follows the same capture/transcription flow but keeps its
-                // result in-app so testing never types into another application.
-                crate::overlay::hide(&app);
-                let insertion_method = if should_insert {
-                    std::thread::sleep(std::time::Duration::from_millis(150));
-                    crate::input::insert_text_locally(&app, &text)?.method.to_string()
-                } else {
-                    "playground".to_string()
-                };
-                Ok(DictationResult {
-                    text,
-                    audio_duration_ms,
-                    transcription_duration_ms: started.elapsed().as_millis() as u64,
-                    insertion_method,
-                })
-            });
+                    log::info!("expanded spoken snippet command: {}", snippet.name);
+                    snippet.body
+                }
+                None => text,
+            };
+
+            // Give Escape a short window after transcription completes, then
+            // atomically claim the result before it can be inserted or saved.
+            std::thread::sleep(std::time::Duration::from_millis(150));
+            if !app.state::<DictationState>().commit_pending(generation) {
+                return Err("Dictation was cancelled".to_string());
+            }
+
+            // The Playground follows the same capture/transcription flow but
+            // keeps its result in-app so testing never types into another app.
+            crate::overlay::hide(&app);
+            let insertion_method = if should_insert {
+                crate::input::insert_text_locally(&app, &text)?
+                    .method
+                    .to_string()
+            } else {
+                "playground".to_string()
+            };
+            Ok(DictationResult {
+                text,
+                audio_duration_ms,
+                transcription_duration_ms: started.elapsed().as_millis() as u64,
+                insertion_method,
+            })
+        });
+
+        app.state::<DictationState>().clear_pending(generation);
+        crate::shortcut::disable_cancel_shortcut(&app);
 
         match result {
             Ok(result) => {
@@ -169,4 +249,30 @@ pub fn start_playground_dictation(app: AppHandle) -> Result<(), String> {
 #[tauri::command]
 pub fn stop_playground_dictation(app: AppHandle) -> Result<(), String> {
     finish_for_playground(&app)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::DictationState;
+
+    #[test]
+    fn escape_cancellation_prevents_a_pending_result_from_committing() {
+        let state = DictationState::new();
+        let generation = state.begin_session();
+        assert!(state.make_cancellable(generation));
+
+        assert!(state.cancel_pending());
+        assert!(!state.is_active(generation));
+        assert!(!state.commit_pending(generation));
+    }
+
+    #[test]
+    fn committed_results_can_no_longer_be_cancelled() {
+        let state = DictationState::new();
+        let generation = state.begin_session();
+        assert!(state.make_cancellable(generation));
+
+        assert!(state.commit_pending(generation));
+        assert!(!state.cancel_pending());
+    }
 }

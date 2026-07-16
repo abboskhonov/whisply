@@ -1,5 +1,5 @@
 use rusqlite::{params, Connection};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
 use std::sync::Mutex;
@@ -8,6 +8,7 @@ use tauri::{AppHandle, Manager, State};
 
 const DATABASE_FILE: &str = "history.sqlite3";
 const RECENT_DICTATIONS_LIMIT: i64 = 100;
+const DICTATION_ARCHIVE_PAGE_SIZE: usize = 50;
 
 pub struct HistoryStore {
     connection: Mutex<Connection>,
@@ -34,6 +35,46 @@ pub struct StoredDictation {
     pub id: i64,
     pub created_at_ms: i64,
     pub text: String,
+}
+
+#[derive(Debug, Clone, Copy, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum HistoryDateRange {
+    Today,
+    LastSevenDays,
+    ThisMonth,
+    AllTime,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct DictationArchiveQuery {
+    pub cursor: Option<DictationArchiveCursor>,
+    pub search: Option<String>,
+    pub date_range: HistoryDateRange,
+    pub insertion_method: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct DictationArchiveCursor {
+    pub created_at_ms: i64,
+    pub id: i64,
+}
+
+#[derive(Debug, Serialize)]
+pub struct DictationArchivePage {
+    pub dictations: Vec<ArchiveDictation>,
+    pub insertion_methods: Vec<String>,
+    pub next_cursor: Option<DictationArchiveCursor>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ArchiveDictation {
+    pub id: i64,
+    pub created_at_ms: i64,
+    pub text: String,
+    pub word_count: i64,
+    pub audio_duration_ms: i64,
+    pub insertion_method: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -98,6 +139,8 @@ impl HistoryStore {
 
                 CREATE INDEX IF NOT EXISTS idx_dictations_created_at
                     ON dictations(created_at_ms DESC);
+                CREATE INDEX IF NOT EXISTS idx_dictations_archive_cursor
+                    ON dictations(created_at_ms DESC, id DESC);
                 ",
             )
             .map_err(|error| format!("Could not initialize history database: {error}"))?;
@@ -150,6 +193,19 @@ impl HistoryStore {
         Ok(())
     }
 
+    fn delete_dictation(&self, id: i64) -> Result<(), String> {
+        let connection = self
+            .connection
+            .lock()
+            .map_err(|error| format!("History database lock failed: {error}"))?;
+
+        connection
+            .execute("DELETE FROM dictations WHERE id = ?1", params![id])
+            .map_err(|error| format!("Could not delete dictation history: {error}"))?;
+
+        Ok(())
+    }
+
     fn home_dashboard(&self) -> Result<HomeDashboard, String> {
         let connection = self
             .connection
@@ -193,24 +249,104 @@ impl HistoryStore {
         })
     }
 
-    fn insights_dashboard(&self) -> Result<InsightsDashboard, String> {
+    fn dictation_archive(
+        &self,
+        query: DictationArchiveQuery,
+    ) -> Result<DictationArchivePage, String> {
         let connection = self
             .connection
             .lock()
             .map_err(|error| format!("History database lock failed: {error}"))?;
+        let cursor = query.cursor.unwrap_or(DictationArchiveCursor {
+            created_at_ms: i64::MAX,
+            id: i64::MAX,
+        });
+        let search = query.search.unwrap_or_default().trim().to_string();
+        let date_range_clause = date_range_clause(query.date_range);
+        let insertion_methods = insertion_methods_for_range(&connection, query.date_range)?;
+        let sql = format!(
+            "
+            SELECT id, created_at_ms, text, word_count, audio_duration_ms, insertion_method
+            FROM dictations
+            WHERE (created_at_ms < ?1 OR (created_at_ms = ?1 AND id < ?2))
+                AND instr(lower(text), lower(?3)) > 0
+                AND (?4 IS NULL OR insertion_method = ?4)
+                AND {date_range_clause}
+            ORDER BY created_at_ms DESC, id DESC
+            LIMIT ?5
+            "
+        );
+        let mut statement = connection
+            .prepare(&sql)
+            .map_err(|error| format!("Could not prepare dictation archive query: {error}"))?;
+        let rows = statement
+            .query_map(
+                params![
+                    cursor.created_at_ms,
+                    cursor.id,
+                    search,
+                    query.insertion_method,
+                    i64::try_from(DICTATION_ARCHIVE_PAGE_SIZE + 1)
+                        .map_err(|error| format!("Archive page size is invalid: {error}"))?,
+                ],
+                |row| {
+                    Ok(ArchiveDictation {
+                        id: row.get(0)?,
+                        created_at_ms: row.get(1)?,
+                        text: row.get(2)?,
+                        word_count: row.get(3)?,
+                        audio_duration_ms: row.get(4)?,
+                        insertion_method: row.get(5)?,
+                    })
+                },
+            )
+            .map_err(|error| format!("Could not query dictation archive: {error}"))?;
+        let mut dictations = rows
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|error| format!("Could not read dictation archive: {error}"))?;
+        let has_next_page = dictations.len() > DICTATION_ARCHIVE_PAGE_SIZE;
+        dictations.truncate(DICTATION_ARCHIVE_PAGE_SIZE);
+        let next_cursor = has_next_page.then(|| {
+            let dictation = dictations
+                .last()
+                .expect("A full archive page must contain a final dictation");
+            DictationArchiveCursor {
+                created_at_ms: dictation.created_at_ms,
+                id: dictation.id,
+            }
+        });
+
+        Ok(DictationArchivePage {
+            dictations,
+            insertion_methods,
+            next_cursor,
+        })
+    }
+
+    fn insights_dashboard(
+        &self,
+        date_range: HistoryDateRange,
+    ) -> Result<InsightsDashboard, String> {
+        let connection = self
+            .connection
+            .lock()
+            .map_err(|error| format!("History database lock failed: {error}"))?;
+        let date_range_clause = date_range_clause(date_range);
+        let summary_sql = format!(
+            "
+            SELECT
+                COALESCE(SUM(word_count), 0),
+                COUNT(*),
+                COALESCE(SUM(audio_duration_ms), 0)
+            FROM dictations
+            WHERE {date_range_clause}
+            "
+        );
         let (total_word_count, total_dictation_count, total_audio_duration_ms): (i64, i64, i64) =
             connection
-                .query_row(
-                    "
-                    SELECT
-                        COALESCE(SUM(word_count), 0),
-                        COUNT(*),
-                        COALESCE(SUM(audio_duration_ms), 0)
-                    FROM dictations
-                    ",
-                    [],
-                    |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
-                )
+                .query_row(&summary_sql, [], |row| {
+                    Ok((row.get(0)?, row.get(1)?, row.get(2)?))
+                })
                 .map_err(|error| format!("Could not load insights summary: {error}"))?;
         let total_word_count = to_u64(total_word_count)?;
         let total_audio_duration_ms = to_u64(total_audio_duration_ms)?;
@@ -224,10 +360,10 @@ impl HistoryStore {
             total_word_count,
             total_dictation_count: to_u64(total_dictation_count)?,
             average_words_per_minute,
-            insertion_methods: insertion_method_usage(&connection)?,
+            insertion_methods: insertion_method_usage(&connection, date_range)?,
             current_streak_days: current_streak_days(&connection)?,
             longest_streak_days: longest_streak_days(&connection)?,
-            activity: recent_daily_activity(&connection)?,
+            activity: recent_daily_activity(&connection, date_range)?,
         })
     }
 }
@@ -299,17 +435,62 @@ fn recent_dictations(connection: &Connection) -> Result<Vec<StoredDictation>, St
         .map_err(|error| format!("Could not read recent dictations: {error}"))
 }
 
-fn insertion_method_usage(connection: &Connection) -> Result<Vec<InsertionMethodUsage>, String> {
+fn date_range_clause(date_range: HistoryDateRange) -> &'static str {
+    match date_range {
+        HistoryDateRange::Today => {
+            "date(created_at_ms / 1000, 'unixepoch', 'localtime') = date('now', 'localtime')"
+        }
+        HistoryDateRange::LastSevenDays => {
+            "date(created_at_ms / 1000, 'unixepoch', 'localtime') BETWEEN date('now', '-6 days', 'localtime') AND date('now', 'localtime')"
+        }
+        HistoryDateRange::ThisMonth => {
+            "date(created_at_ms / 1000, 'unixepoch', 'localtime') BETWEEN date('now', 'start of month', 'localtime') AND date('now', 'localtime')"
+        }
+        HistoryDateRange::AllTime => "1 = 1",
+    }
+}
+
+fn insertion_methods_for_range(
+    connection: &Connection,
+    date_range: HistoryDateRange,
+) -> Result<Vec<String>, String> {
+    let sql = format!(
+        "
+        SELECT DISTINCT insertion_method
+        FROM dictations
+        WHERE {}
+        ORDER BY insertion_method ASC
+        ",
+        date_range_clause(date_range)
+    );
     let mut statement = connection
-        .prepare(
-            "
-            SELECT insertion_method, COUNT(*)
-            FROM dictations
-            GROUP BY insertion_method
-            ORDER BY COUNT(*) DESC, insertion_method ASC
-            LIMIT 6
-            ",
-        )
+        .prepare(&sql)
+        .map_err(|error| format!("Could not prepare archive insertion methods query: {error}"))?;
+    let rows = statement
+        .query_map([], |row| row.get(0))
+        .map_err(|error| format!("Could not query archive insertion methods: {error}"))?;
+
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(|error| format!("Could not read archive insertion methods: {error}"))
+}
+
+fn insertion_method_usage(
+    connection: &Connection,
+    date_range: HistoryDateRange,
+) -> Result<Vec<InsertionMethodUsage>, String> {
+    let sql = format!(
+        "
+        SELECT insertion_method, COUNT(*)
+        FROM dictations
+        WHERE {}
+        GROUP BY insertion_method
+        ORDER BY COUNT(*) DESC, insertion_method ASC
+        LIMIT 6
+        ",
+        date_range_clause(date_range)
+    );
+    let mut statement = connection
+        .prepare(&sql)
         .map_err(|error| format!("Could not prepare insertion method query: {error}"))?;
     let rows = statement
         .query_map([], |row| {
@@ -379,20 +560,24 @@ fn longest_streak_days(connection: &Connection) -> Result<u64, String> {
     to_u64(count)
 }
 
-fn recent_daily_activity(connection: &Connection) -> Result<Vec<DailyActivity>, String> {
+fn recent_daily_activity(
+    connection: &Connection,
+    date_range: HistoryDateRange,
+) -> Result<Vec<DailyActivity>, String> {
+    let sql = format!(
+        "
+        SELECT
+            date(created_at_ms / 1000, 'unixepoch', 'localtime') AS day,
+            COUNT(*)
+        FROM dictations
+        WHERE {}
+        GROUP BY day
+        ORDER BY day ASC
+        ",
+        date_range_clause(date_range)
+    );
     let mut statement = connection
-        .prepare(
-            "
-            SELECT
-                date(created_at_ms / 1000, 'unixepoch', 'localtime') AS day,
-                COUNT(*)
-            FROM dictations
-            WHERE date(created_at_ms / 1000, 'unixepoch', 'localtime')
-                >= date('now', '-181 days', 'localtime')
-            GROUP BY day
-            ORDER BY day ASC
-            ",
-        )
+        .prepare(&sql)
         .map_err(|error| format!("Could not prepare recent activity query: {error}"))?;
     let rows = statement
         .query_map([], |row| {
@@ -417,8 +602,24 @@ pub fn get_home_dashboard(store: State<'_, HistoryStore>) -> Result<HomeDashboar
 }
 
 #[tauri::command]
-pub fn get_insights_dashboard(store: State<'_, HistoryStore>) -> Result<InsightsDashboard, String> {
-    store.insights_dashboard()
+pub fn get_insights_dashboard(
+    date_range: HistoryDateRange,
+    store: State<'_, HistoryStore>,
+) -> Result<InsightsDashboard, String> {
+    store.insights_dashboard(date_range)
+}
+
+#[tauri::command]
+pub fn delete_dictation(id: i64, store: State<'_, HistoryStore>) -> Result<(), String> {
+    store.delete_dictation(id)
+}
+
+#[tauri::command]
+pub fn get_dictation_archive(
+    query: DictationArchiveQuery,
+    store: State<'_, HistoryStore>,
+) -> Result<DictationArchivePage, String> {
+    store.dictation_archive(query)
 }
 
 #[cfg(test)]
@@ -446,6 +647,114 @@ mod tests {
         HistoryStore {
             connection: Mutex::new(connection),
         }
+    }
+
+    #[test]
+    fn paginates_the_complete_archive_in_newest_first_order() {
+        let store = in_memory_store();
+        let connection = store.connection.lock().unwrap();
+        for id in 1..=51 {
+            connection
+                .execute(
+                    "
+                    INSERT INTO dictations (
+                        id, created_at_ms, text, word_count, audio_duration_ms,
+                        transcription_duration_ms, insertion_method
+                    ) VALUES (?1, ?2, ?3, 1, 1_000, 1_000, 'clipboard')
+                    ",
+                    params![id, 10_000 - id, format!("dictation {id}")],
+                )
+                .unwrap();
+        }
+        drop(connection);
+
+        let first_page = store
+            .dictation_archive(DictationArchiveQuery {
+                cursor: None,
+                search: None,
+                date_range: HistoryDateRange::AllTime,
+                insertion_method: None,
+            })
+            .unwrap();
+        assert_eq!(first_page.dictations.len(), DICTATION_ARCHIVE_PAGE_SIZE);
+        assert_eq!(first_page.dictations[0].id, 1);
+        assert_eq!(first_page.dictations.last().unwrap().id, 50);
+
+        let second_page = store
+            .dictation_archive(DictationArchiveQuery {
+                cursor: first_page.next_cursor,
+                search: None,
+                date_range: HistoryDateRange::AllTime,
+                insertion_method: None,
+            })
+            .unwrap();
+        assert_eq!(second_page.dictations.len(), 1);
+        assert_eq!(second_page.dictations[0].id, 51);
+        assert!(second_page.next_cursor.is_none());
+    }
+
+    #[test]
+    fn archive_filters_compose_search_date_range_and_insertion_method() {
+        let store = in_memory_store();
+        let connection = store.connection.lock().unwrap();
+        for (offset, text, method) in [
+            ("0 days", "matching clipboard", "clipboard"),
+            ("0 days", "matching direct", "direct"),
+            ("-7 days", "matching older", "clipboard"),
+        ] {
+            connection
+                .execute(
+                    "
+                    INSERT INTO dictations (
+                        created_at_ms, text, word_count, audio_duration_ms,
+                        transcription_duration_ms, insertion_method
+                    ) VALUES (
+                        CAST(strftime('%s', 'now', ?1) AS INTEGER) * 1000,
+                        ?2, 2, 1_000, 1_000, ?3
+                    )
+                    ",
+                    params![offset, text, method],
+                )
+                .unwrap();
+        }
+        drop(connection);
+
+        let page = store
+            .dictation_archive(DictationArchiveQuery {
+                cursor: None,
+                search: Some("matching".to_string()),
+                date_range: HistoryDateRange::Today,
+                insertion_method: Some("clipboard".to_string()),
+            })
+            .unwrap();
+
+        assert_eq!(page.dictations.len(), 1);
+        assert_eq!(page.dictations[0].text, "matching clipboard");
+        assert_eq!(page.insertion_methods, ["clipboard", "direct"]);
+    }
+
+    #[test]
+    fn deletes_a_dictation() {
+        let store = in_memory_store();
+        store
+            .connection
+            .lock()
+            .unwrap()
+            .execute(
+                "INSERT INTO dictations (created_at_ms, text, word_count, audio_duration_ms, transcription_duration_ms, insertion_method) VALUES (1, 'Delete me', 2, 1_000, 1_000, 'clipboard')",
+                [],
+            )
+            .unwrap();
+
+        store.delete_dictation(1).unwrap();
+
+        let count: i64 = store
+            .connection
+            .lock()
+            .unwrap()
+            .query_row("SELECT COUNT(*) FROM dictations", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(count, 0);
     }
 
     #[test]
@@ -477,7 +786,7 @@ mod tests {
         assert_eq!(dashboard.recent_dictations.len(), 1);
         assert_eq!(dashboard.recent_dictations[0].text, result.text);
 
-        let insights = store.insights_dashboard().unwrap();
+        let insights = store.insights_dashboard(HistoryDateRange::AllTime).unwrap();
         assert_eq!(insights.total_word_count, 3);
         assert_eq!(insights.total_dictation_count, 1);
         assert_eq!(insights.average_words_per_minute, 90);

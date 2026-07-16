@@ -71,6 +71,23 @@ jobs:
           assetNamePattern: "[name]-[version]-[platform]-[arch][ext]"
           includeUpdaterJson: false
 
+      - name: Send Windows installer to Telegram
+        if: matrix.platform == 'windows-latest'
+        shell: bash
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          test -n "$TELEGRAM_BOT_TOKEN"
+          test -n "$TELEGRAM_CHAT_ID"
+          installer=$(find src-tauri/target/release/bundle -type f -name '*.exe' -print -quit)
+          test -n "$installer"
+          curl --fail --retry 3 --retry-all-errors \
+            --form "chat_id=$TELEGRAM_CHAT_ID" \
+            --form "document=@$installer" \
+            --form "caption=Whisply Windows installer — ${GITHUB_SHA::7}" \
+            "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendDocument"
+
       - name: Release summary
         if: steps.tauri.outputs.releaseHtmlUrl != ''
         run: |

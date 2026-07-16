@@ -47,7 +47,7 @@ export function StreakHeatmap({
 
   return (
     <div className={cn("flex flex-col gap-2", className)}>
-      <div className="flex pl-8">
+      <div className="flex justify-between pl-8">
         {data.map((week, index) => (
           <div
             key={localDateKey(week[0].date)}
@@ -73,7 +73,7 @@ export function StreakHeatmap({
           ))}
         </div>
 
-        <div className="flex gap-0.5">
+        <div className="flex flex-1 justify-between">
           {data.map((week) => (
             <div key={week[0].date.toISOString()} className="flex flex-col gap-0.5">
               {week.map((day) => (

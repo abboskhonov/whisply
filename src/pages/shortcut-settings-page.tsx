@@ -163,8 +163,8 @@ export function ShortcutSettingsPage() {
           <Info weight="fill" className="mt-0.5 size-3.5 shrink-0" />
           <p>
             On Wayland, printable shortcuts can also reach the focused app.
-            Prefer a function key such as F8, or a non-printing combination like
-            Ctrl + Space.
+            Ctrl + Space is the default: it is quick to hold and avoids typing
+            into the focused app. A function key is another reliable option.
           </p>
         </div>
       </Section>

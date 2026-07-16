@@ -105,7 +105,7 @@ export function OverlayApp() {
           state === "recording"
             ? "Recording in progress"
             : state === "transcribing"
-              ? "Transcribing recording"
+              ? "Transcribing recording. Press Escape to discard."
               : errorLabel(errorMessage)
         }
       >

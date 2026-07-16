@@ -8,8 +8,8 @@ export type ShortcutConfig = {
 export type TriggerMode = "hold" | "toggle"
 
 export const DEFAULT_SHORTCUT: ShortcutConfig = {
-  modifiers: [],
-  key: "F8",
+  modifiers: ["Ctrl"],
+  key: "Space",
 }
 
 export const MODIFIER_LABELS: Record<ShortcutModifier, string> = {

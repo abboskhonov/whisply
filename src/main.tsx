@@ -13,6 +13,7 @@ import { DictationQuerySynchronizer } from "@/components/dictation-query-synchro
 import { ThemeProvider } from "@/components/theme-provider.tsx"
 import { ExternalLinkGuard } from "./components/external-link-guard.tsx"
 import { DebugPanel } from "./components/debug-panel.tsx"
+import { Toaster } from "@/components/ui/sonner"
 
 const rootEl = document.getElementById("root")!
 rootEl.removeAttribute("data-ui-scroll-container")
@@ -29,6 +30,7 @@ createRoot(rootEl).render(
       <DictationQuerySynchronizer />
       <ThemeProvider>
         <ExternalLinkGuard />
+        <Toaster position="bottom-right" richColors />
         {import.meta.env.DEV ? <DebugPanel /> : null}
         <RouterProvider router={router} />
       </ThemeProvider>

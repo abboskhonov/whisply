@@ -52,6 +52,42 @@ impl ShortcutRegistry {
     }
 }
 
+/// Escape is only captured while a completed recording is being transcribed.
+/// Keeping it temporary avoids stealing Escape from the user's active app.
+pub fn enable_cancel_shortcut(app: &AppHandle, _generation: u64) {
+    if uses_evdev_backend() {
+        return;
+    }
+
+    let shortcut: Shortcut = match "Escape".parse() {
+        Ok(shortcut) => shortcut,
+        Err(error) => {
+            log::warn!("could not parse dictation cancel shortcut: {error}");
+            return;
+        }
+    };
+    if let Err(error) = app
+        .global_shortcut()
+        .on_shortcut(shortcut, |app, _, event| {
+            if event.state == ShortcutState::Pressed {
+                crate::dictation::cancel_pending(app);
+            }
+        })
+    {
+        log::warn!("could not enable Escape dictation cancellation: {error}");
+    }
+}
+
+pub fn disable_cancel_shortcut(app: &AppHandle) {
+    if uses_evdev_backend() {
+        return;
+    }
+
+    if let Ok(shortcut) = "Escape".parse::<Shortcut>() {
+        let _ = app.global_shortcut().unregister(shortcut);
+    }
+}
+
 /// Tauri-managed state: flag so we only start the listener once.
 pub struct ListenerRunning(pub Arc<AtomicBool>);
 
@@ -234,6 +270,10 @@ fn handle_evdev_event(
     }
 
     if value == 2 {
+        return;
+    }
+
+    if value == 1 && key == KeyCode::KEY_ESC && crate::dictation::cancel_pending(app) {
         return;
     }
 

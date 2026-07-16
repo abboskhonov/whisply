@@ -94,7 +94,7 @@ export function Layout({
           <AppShellHeader {...(header ?? {})} />
           <div
             data-ui-scroll-container
-            className="flex min-h-0 flex-1 flex-col bg-background will-change-transform"
+            className="flex min-h-0 flex-1 flex-col bg-background"
           >
             {children}
           </div>

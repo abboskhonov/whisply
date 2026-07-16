@@ -7,9 +7,19 @@ export type SpeechModel = {
   name: string
   description: string
   languages: string
+  parameters: string
+  architecture: string
+  owner: string
+  license: string
+  source_url: string
   download_size_bytes: number
   installed: boolean
   selected: boolean
+}
+
+export type ModelMemorySettings = {
+  keep_loaded: boolean
+  unload_after_minutes: number
 }
 
 export type ModelDownloadStage =
@@ -43,6 +53,16 @@ export function cancelSpeechModelDownload() {
 
 export function selectSpeechModel(modelId: string) {
   return trackedInvoke<void>("select_model", { modelId })
+}
+
+export function getModelMemorySettings() {
+  return trackedInvoke<ModelMemorySettings>("get_model_memory_settings")
+}
+
+export function setModelMemorySettings(settings: ModelMemorySettings) {
+  return trackedInvoke<ModelMemorySettings>("set_model_memory_settings", {
+    settings,
+  })
 }
 
 export function listenToModelDownload(

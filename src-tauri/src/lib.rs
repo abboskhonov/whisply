@@ -15,7 +15,11 @@ use std::sync::Arc;
 
 
 use tauri::webview::PageLoadEvent;
-use tauri::{Manager, WindowEvent};
+use tauri::{
+    menu::{MenuBuilder, MenuItemBuilder},
+    tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
+    Manager, WindowEvent,
+};
 use tauri_plugin_global_shortcut::Builder as GlobalShortcutBuilder;
 use tauri_plugin_opener::OpenerExt;
 use tauri_plugin_log::{Target, TargetKind};
@@ -95,14 +99,50 @@ pub fn run() {
             }
 
             if let WindowEvent::CloseRequested { api, .. } = event {
-                // The recording overlay is a hidden, independent window. Without
-                // an explicit app exit, closing main leaves that overlay process
-                // alive and a later launcher invocation has no main window to show.
                 api.prevent_close();
-                window.app_handle().exit(0);
+                let _ = window.hide();
             }
         })
         .setup(|app| {
+            let show = MenuItemBuilder::with_id("show", "Show Whisply").build(app)?;
+            let quit = MenuItemBuilder::with_id("quit", "Quit Whisply").build(app)?;
+            let menu = MenuBuilder::new(app).items(&[&show, &quit]).build()?;
+            let icon = app
+                .default_window_icon()
+                .expect("application icon must be configured")
+                .clone();
+
+            TrayIconBuilder::with_id("whisply")
+                .icon(icon)
+                .tooltip("Whisply")
+                .menu(&menu)
+                .on_menu_event(|app, event| match event.id().as_ref() {
+                    "show" => {
+                        if let Some(window) = app.get_webview_window("main") {
+                            let _ = window.unminimize();
+                            let _ = window.show();
+                            let _ = window.set_focus();
+                        }
+                    }
+                    "quit" => app.exit(0),
+                    _ => {}
+                })
+                .on_tray_icon_event(|tray, event| {
+                    if let TrayIconEvent::Click {
+                        button: MouseButton::Left,
+                        button_state: MouseButtonState::Up,
+                        ..
+                    } = event
+                    {
+                        if let Some(window) = tray.app_handle().get_webview_window("main") {
+                            let _ = window.unminimize();
+                            let _ = window.show();
+                            let _ = window.set_focus();
+                        }
+                    }
+                })
+                .build(app)?;
+
             #[cfg(desktop)]
             {
                 let _ = app.handle().plugin(tauri_plugin_autostart::init(
@@ -122,6 +162,7 @@ pub fn run() {
             let onboarding_state = app.state::<onboarding::OnboardingState>();
             onboarding_state.init(&handle);
             app.state::<models::ModelManager>().init(&handle);
+            app.state::<transcription::TranscriptionState>().init(&handle);
             app.manage(history::HistoryStore::open(&handle)?);
             app.manage(snippets::SnippetStore::open(&handle)?);
             onboarding::open_if_incomplete(&handle);
@@ -166,11 +207,15 @@ pub fn run() {
             onboarding::open_onboarding_window,
             history::get_home_dashboard,
             history::get_insights_dashboard,
+            history::get_dictation_archive,
+            history::delete_dictation,
             snippets::list_snippets,
             snippets::add_snippet,
             snippets::delete_snippet,
             dictation::start_playground_dictation,
             dictation::stop_playground_dictation,
+            transcription::get_model_memory_settings,
+            transcription::set_model_memory_settings,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

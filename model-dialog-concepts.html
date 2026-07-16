@@ -1,0 +1,216 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Whisply — Model detail concepts</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --canvas: #171717;
+      --surface: #202020;
+      --surface-raised: #282828;
+      --line: #363636;
+      --text: #f2f2f2;
+      --muted: #a3a3a3;
+      --blue: #5ba8ff;
+      --blue-soft: rgba(91, 168, 255, .14);
+      --green: #71d69b;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      padding: 56px 24px 80px;
+      background: var(--canvas);
+      color: var(--text);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    main { max-width: 1120px; margin: 0 auto; }
+    header { max-width: 670px; margin-bottom: 42px; }
+    h1 { margin: 0; font-size: clamp(28px, 4vw, 42px); letter-spacing: -.04em; }
+    header p { margin: 12px 0 0; color: var(--muted); font-size: 16px; line-height: 1.6; }
+    .concepts { display: grid; gap: 28px; }
+    .concept-label { display: flex; align-items: baseline; gap: 12px; margin: 0 0 10px 4px; }
+    .concept-label strong { font-size: 14px; }
+    .concept-label span { color: var(--muted); font-size: 13px; }
+    .dialog {
+      width: min(100%, 680px);
+      overflow: hidden;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: var(--surface);
+      box-shadow: 0 20px 60px rgba(0,0,0,.28);
+    }
+    .dialog-wide { width: min(100%, 820px); }
+    .dialog-header { padding: 28px 30px 0; }
+    .eyebrow { color: var(--muted); font-size: 12px; font-weight: 600; letter-spacing: .02em; }
+    h2 { margin: 8px 0 0; font-size: 24px; letter-spacing: -.03em; }
+    .description { max-width: 540px; margin: 9px 0 0; color: var(--muted); font-size: 14px; line-height: 1.55; }
+    .hf-link { color: var(--blue); font-size: 13px; font-weight: 600; text-decoration: none; }
+    .hf-link:hover { text-decoration: underline; }
+    .detail-footer { padding: 18px 30px 24px; color: var(--muted); font-size: 13px; line-height: 1.5; }
+
+    /* Concept 1: product card */
+    .product-hero { display: grid; grid-template-columns: 1fr auto; gap: 24px; align-items: end; padding: 26px 30px 24px; }
+    .product-hero h2 { margin: 0; font-size: 28px; }
+    .model-chip { display: inline-flex; align-items: center; gap: 7px; margin-top: 10px; color: var(--green); font-size: 12px; font-weight: 600; }
+    .dot { width: 7px; height: 7px; border-radius: 999px; background: currentColor; }
+    .model-link { display: inline-flex; align-items: center; gap: 6px; padding: 8px 10px; border-radius: 8px; color: var(--blue); background: var(--blue-soft); font-size: 13px; font-weight: 600; text-decoration: none; }
+    .model-link:hover { background: rgba(91, 168, 255, .22); }
+    .capability { padding: 19px 30px; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); background: linear-gradient(90deg, rgba(255,255,255,.025), transparent); font-size: 16px; line-height: 1.5; }
+    .capability strong { color: var(--blue); font-weight: 600; }
+    .facts { display: flex; flex-wrap: wrap; gap: 10px 26px; padding: 21px 30px 4px; }
+    .fact { display: flex; flex-direction: column; gap: 3px; min-width: 104px; }
+    .fact span { color: var(--muted); font-size: 11px; }
+    .fact b { font-size: 13px; font-weight: 600; }
+
+    /* Concept 2: editorial split */
+    .editorial { display: grid; grid-template-columns: 210px 1fr; min-height: 282px; }
+    .editorial-aside { display: flex; flex-direction: column; justify-content: space-between; padding: 26px; background: var(--surface-raised); border-right: 1px solid var(--line); }
+    .editorial-aside .mark { color: var(--blue); font-size: 30px; font-weight: 700; letter-spacing: -.05em; }
+    .editorial-aside p { margin: 8px 0 0; color: var(--muted); font-size: 12px; line-height: 1.5; }
+    .editorial-aside .license { color: var(--text); font-size: 12px; font-weight: 600; }
+    .editorial-body { padding: 30px; }
+    .editorial-body h2 { margin-top: 5px; }
+    .editorial-body .description { margin-bottom: 28px; }
+    .language-line { border-top: 1px solid var(--line); padding-top: 17px; }
+    .language-line small { display: block; color: var(--muted); font-size: 11px; margin-bottom: 6px; }
+    .language-line p { margin: 0; font-size: 14px; line-height: 1.55; }
+
+    /* Concept 3: quiet command palette */
+    .quiet { padding: 12px; }
+    .quiet-top { display: flex; justify-content: space-between; gap: 20px; padding: 17px 18px 19px; }
+    .quiet-top h2 { margin: 0; font-size: 19px; }
+    .quiet-top p { margin: 7px 0 0; color: var(--muted); font-size: 13px; line-height: 1.5; }
+    .quiet-top .hf-link { white-space: nowrap; align-self: start; }
+    .rows { border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+    .row { display: grid; grid-template-columns: 132px 1fr; gap: 16px; padding: 13px 15px; border-bottom: 1px solid var(--line); font-size: 13px; }
+    .row:last-child { border: 0; }
+    .row dt { color: var(--muted); }
+    .row dd { margin: 0; line-height: 1.45; }
+    .privacy { display: flex; align-items: center; gap: 8px; padding: 15px 4px 4px; color: var(--muted); font-size: 12px; }
+    .lock { color: var(--green); }
+    @media (max-width: 600px) {
+      body { padding: 28px 16px 56px; }
+      .product-hero { grid-template-columns: 1fr; }
+      .model-link { width: fit-content; }
+      .editorial { grid-template-columns: 1fr; }
+      .editorial-aside { gap: 28px; border-right: 0; border-bottom: 1px solid var(--line); }
+      .quiet-top { flex-direction: column; }
+      .row { grid-template-columns: 1fr; gap: 3px; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <h1>Model detail dialog concepts</h1>
+      <p>Three deliberately different directions for the same content. They avoid an information table and make the Hugging Face source feel like part of the model’s identity.</p>
+    </header>
+
+    <section class="concepts">
+      <article>
+        <p class="concept-label"><strong>01 — Product profile</strong><span>Best balance of clarity and character</span></p>
+        <div class="dialog dialog-wide">
+          <div class="product-hero">
+            <div>
+              <h2>Parakeet 0.6B Multilingual</h2>
+              <div class="model-chip"><i class="dot"></i> Currently selected</div>
+            </div>
+            <a class="model-link" href="#">See on Hugging Face ↗</a>
+          </div>
+          <div class="capability">A <strong>local speech-to-text model</strong> for punctuation, capitalization, and 25 European languages.</div>
+          <div class="facts">
+            <div class="fact"><span>Architecture</span><b>FastConformer-TDT</b></div>
+            <div class="fact"><span>Model size</span><b>600M parameters</b></div>
+            <div class="fact"><span>License</span><b>CC BY 4.0</b></div>
+            <div class="fact"><span>Download</span><b>465 MB</b></div>
+          </div>
+          <div class="detail-footer">Published by NVIDIA · Your audio stays on this device. Whisply never sends it to the model publisher.</div>
+        </div>
+      </article>
+
+      <article>
+        <p class="concept-label"><strong>02 — Editorial split</strong><span>More distinctive; provenance-led</span></p>
+        <div class="dialog dialog-wide editorial">
+          <aside class="editorial-aside">
+            <div><div class="mark">0.6B</div><p>Parameters<br>FastConformer-TDT</p></div>
+            <div><p>Published by</p><div class="license">NVIDIA</div><p><a class="hf-link" href="#">Hugging Face ↗</a></p></div>
+          </aside>
+          <div class="editorial-body">
+            <div class="eyebrow">Local speech model</div>
+            <h2>Parakeet Multilingual</h2>
+            <p class="description">A high-quality transcription model with punctuation and capitalization built in. Downloaded once, then processed entirely on your device.</p>
+            <div class="language-line"><small>Language coverage</small><p>English, German, French, Spanish, Italian, Ukrainian, Russian, and 18 more European languages.</p></div>
+          </div>
+        </div>
+      </article>
+
+      <article>
+        <p class="concept-label"><strong>03 — Quiet technical sheet</strong><span>Most compact; documentation-inspired</span></p>
+        <div class="dialog">
+          <div class="quiet">
+            <div class="quiet-top">
+              <div><h2>Parakeet 0.6B Multilingual</h2><p>Local model for accurate multilingual dictation.</p></div>
+              <a class="hf-link" href="#">Hugging Face ↗</a>
+            </div>
+            <dl class="rows">
+              <div class="row"><dt>Model</dt><dd>600M parameters · FastConformer-TDT</dd></div>
+              <div class="row"><dt>Publisher</dt><dd>NVIDIA · CC BY 4.0</dd></div>
+              <div class="row"><dt>Languages</dt><dd>25 European languages with automatic language detection</dd></div>
+              <div class="row"><dt>Storage</dt><dd>465 MB download · runs locally after installation</dd></div>
+            </dl>
+            <div class="privacy"><span class="lock">●</span> Audio never leaves your device.</div>
+          </div>
+        </div>
+      </article>
+
+      <article>
+        <p class="concept-label"><strong>04 — Capability brief</strong><span>Task-first, with the model details in the margins</span></p>
+        <div class="dialog dialog-wide">
+          <div class="dialog-header">
+            <div class="eyebrow">Ready for local dictation</div>
+            <h2>Parakeet 0.6B Multilingual</h2>
+          </div>
+          <div class="capability" style="margin-top:24px">Designed for <strong>fast, polished transcripts</strong> with automatic punctuation and capitalization across 25 European languages.</div>
+          <div style="display:grid;grid-template-columns:1.4fr 1fr;gap:28px;padding:24px 30px">
+            <div><div class="eyebrow">What it covers</div><p style="margin:8px 0 0;font-size:14px;line-height:1.6">English, German, French, Spanish, Italian, Ukrainian, Russian, and more. It detects the spoken language automatically.</p></div>
+            <div><div class="eyebrow">Model details</div><p style="margin:8px 0 0;color:var(--muted);font-size:13px;line-height:1.65">600M parameters<br>FastConformer-TDT<br>465 MB local download<br>CC BY 4.0</p></div>
+          </div>
+          <div class="detail-footer" style="border-top:1px solid var(--line);display:flex;justify-content:space-between;gap:16px"><span>Published by NVIDIA</span><a class="hf-link" href="#">See on Hugging Face ↗</a></div>
+        </div>
+      </article>
+
+      <article>
+        <p class="concept-label"><strong>05 — Model passport</strong><span>Clean source and trust information, without a dashboard feel</span></p>
+        <div class="dialog">
+          <div class="dialog-header">
+            <div class="eyebrow">Speech recognition model</div>
+            <h2>Parakeet 0.6B Multilingual</h2>
+          </div>
+          <div style="margin:24px 30px 0;padding:18px 0;border-top:1px solid var(--line);border-bottom:1px solid var(--line)">
+            <div style="display:flex;justify-content:space-between;gap:20px;padding-bottom:14px"><span style="color:var(--muted);font-size:13px">Source</span><strong style="font-size:13px">NVIDIA</strong></div>
+            <div style="display:flex;justify-content:space-between;gap:20px;padding:14px 0;border-top:1px solid var(--line)"><span style="color:var(--muted);font-size:13px">Runtime</span><strong style="font-size:13px">Local, CPU optimized</strong></div>
+            <div style="display:flex;justify-content:space-between;gap:20px;padding-top:14px;border-top:1px solid var(--line)"><span style="color:var(--muted);font-size:13px">Footprint</span><strong style="font-size:13px">600M · 465 MB</strong></div>
+          </div>
+          <div class="detail-footer"><p style="margin:0 0 10px">Supports 25 European languages, including English, German, Spanish, French, Russian, and Ukrainian.</p><a class="hf-link" href="#">Read the model card on Hugging Face ↗</a></div>
+        </div>
+      </article>
+
+      <article>
+        <p class="concept-label"><strong>06 — Focused source card</strong><span>Very minimal; visual hierarchy comes from typography alone</span></p>
+        <div class="dialog">
+          <div style="padding:34px 30px 30px">
+            <div class="eyebrow">NVIDIA / NeMo</div>
+            <h2 style="font-size:30px">Parakeet<br>Multilingual</h2>
+            <p class="description" style="margin-top:16px">600 million parameters for high-quality, local speech-to-text across 25 European languages.</p>
+            <div style="margin-top:30px;display:flex;align-items:baseline;justify-content:space-between;gap:16px;border-top:1px solid var(--line);padding-top:16px"><span style="font-size:13px;color:var(--muted)">FastConformer-TDT · CC BY 4.0</span><a class="hf-link" href="#">Hugging Face ↗</a></div>
+          </div>
+          <div style="padding:15px 30px;background:var(--surface-raised);color:var(--muted);font-size:12px">Runs privately on this device. 465 MB download.</div>
+        </div>
+      </article>
+    </section>
+  </main>
+</body>
+</html>

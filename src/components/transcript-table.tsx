@@ -20,7 +20,7 @@ export function TranscriptGroup({
       <div className="flex items-baseline justify-between px-1 text-[11px] font-medium tracking-wider text-muted-foreground uppercase">
         <span>{label}</span>
         {typeof count === "number" ? (
-          <span className="text-[10.5px] tabular-nums text-muted-foreground/70">
+          <span className="text-[10.5px] text-muted-foreground/70 tabular-nums">
             {count} {count === 1 ? "transcript" : "transcripts"}
           </span>
         ) : null}
@@ -45,7 +45,7 @@ export const TranscriptRow = React.forwardRef<
   return (
     <li ref={ref} className={cn("group/row", className)} {...props}>
       <div className="grid grid-cols-[5.5rem_1fr_auto] items-center gap-4 px-4 py-3 transition-colors group-hover/row:bg-muted/60">
-        <time className="text-xs font-medium tabular-nums text-muted-foreground">
+        <time className="text-xs font-medium text-muted-foreground tabular-nums">
           {time}
         </time>
         <p

@@ -1,28 +1,32 @@
-import * as React from "react"
-import { TrendUp } from "@phosphor-icons/react"
-import { useVirtualizer } from "@tanstack/react-virtual"
+import { Copy, Trash, TrendUp } from "@phosphor-icons/react"
+import { invoke } from "@tauri-apps/api/core"
+import { useMutation } from "@tanstack/react-query"
+import { toast } from "sonner"
 
+import { Button } from "@/components/ui/button"
 import { PageHeader, PageShell, Section } from "@/components/page"
 import { StatCard, StatGrid } from "@/components/stats"
-import {
-  TranscriptGroup,
-  TranscriptRow,
-} from "@/components/transcript-table"
+import { TranscriptGroup, TranscriptRow } from "@/components/transcript-table"
 import {
   type StoredDictation,
   useHomeDashboard,
 } from "@/hooks/use-home-dashboard"
+import { dictationQueryKeys } from "@/lib/dictation-queries"
+import { queryClient } from "@/lib/query-client"
 
 const NUMBER_FORMATTER = new Intl.NumberFormat()
+const TIME_FORMATTER = new Intl.DateTimeFormat(undefined, {
+  hour: "numeric",
+  minute: "2-digit",
+})
 
 export function HomePage() {
   const { dashboard, error, isLoading } = useHomeDashboard()
   const today = dashboard?.today
   const yesterday = dashboard?.yesterday
   const recentDictations = dashboard?.recent_dictations ?? []
-  const { todayDictations, yesterdayDictations } = splitRecentDictations(
-    recentDictations
-  )
+  const { todayDictations, yesterdayDictations } =
+    splitRecentDictations(recentDictations)
 
   return (
     <PageShell>
@@ -73,8 +77,8 @@ export function HomePage() {
           </p>
         ) : error ? (
           <p className="px-1 text-sm text-destructive" role="alert">
-            Couldn’t load dictation history. Your future dictations will still be
-            saved locally.
+            Couldn’t load dictation history. Your future dictations will still
+            be saved locally.
           </p>
         ) : recentDictations.length === 0 ? (
           <div className="rounded-lg border border-dashed border-border/60 bg-muted/30 px-4 py-10 text-center">
@@ -88,13 +92,13 @@ export function HomePage() {
         ) : (
           <div className="flex flex-col gap-6">
             {todayDictations.length > 0 ? (
-              <VirtualTranscriptGroup
+              <RecentTranscriptGroup
                 label="Today"
                 dictations={todayDictations}
               />
             ) : null}
             {yesterdayDictations.length > 0 ? (
-              <VirtualTranscriptGroup
+              <RecentTranscriptGroup
                 label="Yesterday"
                 dictations={yesterdayDictations}
               />
@@ -106,45 +110,62 @@ export function HomePage() {
   )
 }
 
-type VirtualTranscriptGroupProps = {
+type TranscriptGroupProps = {
   label: string
   dictations: StoredDictation[]
 }
 
-function VirtualTranscriptGroup({
-  label,
-  dictations,
-}: VirtualTranscriptGroupProps) {
-  const parentRef = React.useRef<HTMLDivElement>(null)
-  const virtualizer = useVirtualizer<HTMLDivElement, HTMLLIElement>({
-    count: dictations.length,
-    getScrollElement: () => parentRef.current,
-    estimateSize: () => 56,
-    getItemKey: (index) => dictations[index].id,
-    overscan: 8,
+function RecentTranscriptGroup({ label, dictations }: TranscriptGroupProps) {
+  const deleteDictation = useMutation({
+    mutationFn: (id: number) => invoke("delete_dictation", { id }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: dictationQueryKeys.root })
+      toast.success("Dictation deleted")
+    },
+    onError: () => toast.error("Couldn’t delete dictation"),
   })
+
+  const copyDictation = async (text: string) => {
+    try {
+      await navigator.clipboard.writeText(text)
+      toast.success("Dictation copied")
+    } catch {
+      toast.error("Couldn’t copy dictation")
+    }
+  }
 
   return (
     <TranscriptGroup label={label} count={dictations.length}>
-      <div ref={parentRef} className="max-h-[32rem] overflow-y-auto">
-        <ul className="relative" style={{ height: virtualizer.getTotalSize() }}>
-          {virtualizer.getVirtualItems().map((virtualItem) => {
-            const dictation = dictations[virtualItem.index]
-
-            return (
-              <TranscriptRow
-                key={virtualItem.key}
-                ref={virtualizer.measureElement}
-                data-index={virtualItem.index}
-                className="absolute w-full border-b border-border/60 last:border-b-0"
-                style={{ transform: `translateY(${virtualItem.start}px)` }}
-                time={formatTime(dictation.created_at_ms)}
-                text={dictation.text}
-              />
-            )
-          })}
-        </ul>
-      </div>
+      {dictations.map((dictation) => (
+        <TranscriptRow
+          key={dictation.id}
+          time={formatTime(dictation.created_at_ms)}
+          text={dictation.text}
+          actions={
+            <>
+              <Button
+                variant="ghost"
+                size="icon-xs"
+                className="size-7 text-muted-foreground hover:text-foreground"
+                aria-label="Copy dictation"
+                onClick={() => void copyDictation(dictation.text)}
+              >
+                <Copy className="size-3.5" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon-xs"
+                className="size-7 text-muted-foreground hover:text-destructive"
+                aria-label="Delete dictation"
+                disabled={deleteDictation.isPending}
+                onClick={() => deleteDictation.mutate(dictation.id)}
+              >
+                <Trash className="size-3.5" />
+              </Button>
+            </>
+          }
+        />
+      ))}
     </TranscriptGroup>
   )
 }
@@ -157,7 +178,9 @@ function WordComparison({
   yesterdayWordCount: number
 }) {
   if (yesterdayWordCount === 0) {
-    return <p className="text-xs text-muted-foreground">No dictations yesterday</p>
+    return (
+      <p className="text-xs text-muted-foreground">No dictations yesterday</p>
+    )
   }
 
   const difference = todayWordCount - yesterdayWordCount
@@ -209,10 +232,7 @@ function localDateKey(date: Date): string {
 }
 
 function formatTime(timestamp: number): string {
-  return new Intl.DateTimeFormat(undefined, {
-    hour: "numeric",
-    minute: "2-digit",
-  }).format(new Date(timestamp))
+  return TIME_FORMATTER.format(new Date(timestamp))
 }
 
 function formatDuration(durationMs: number): string {
