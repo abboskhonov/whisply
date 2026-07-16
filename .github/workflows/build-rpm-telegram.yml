@@ -21,11 +21,8 @@ jobs:
       - name: Check out source
         uses: actions/checkout@v4
 
-      # Rust is provisioned once on the persistent self-hosted runner.
-      - name: Verify Rust toolchain
-        run: |
-          rustc --version
-          cargo --version
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
 
       - name: Configure persistent Cargo target directory
         run: |
