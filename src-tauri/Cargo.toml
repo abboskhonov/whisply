@@ -1,6 +1,6 @@
 [package]
 name = "tauri-native"
-version = "0.1.0"
+version = "0.0.1"
 description = "Whisply — privacy-first voice dictation for Linux"
 authors = ["you"]
 edition = "2021"
