@@ -13,7 +13,7 @@ import { PageShell, Section, SectionHeader } from "@/components/page"
 
 const APP_VERSION = "0.1.0"
 const REPOSITORY_URL = "https://github.com/abboskhonov/whisply"
-const DISCORD_URL = "https://discord.com"
+const DISCORD_URL = "https://discord.gg/4ymp3xPvk"
 
 const HIGHLIGHTS = [
   {
