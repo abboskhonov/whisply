@@ -1,9 +1,12 @@
 <p align="center">
   <img src="./app-icon.png" width="96" alt="Whisply logo" />
-  <a href="https://github.com/abboskhonov/whisply"><img src="./public/github.png" width="32" height="32" alt="GitHub" style="vertical-align:middle;margin-left:12px;" /></a>
 </p>
 
 <h1 align="center">Whisply</h1>
+
+<p align="center">
+  <a href="https://github.com/abboskhonov/whisply"><img src="./public/github.png" width="240" alt="GitHub" /></a>
+</p>
 
 <p align="center">
   <strong>Private, local-first voice dictation for Linux.</strong><br />
