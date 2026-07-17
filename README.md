@@ -1,11 +1,11 @@
 <p align="center">
-  <img src="./app-icon.png" width="96" alt="Whisply logo" />
+  <img src="./src-tauri/icons/icon.png" width="96" alt="Whisply logo" />
 </p>
 
 <h1 align="center">Whisply</h1>
 
 <p align="center">
-  <a href="https://github.com/abboskhonov/whisply"><img src="./public/github.png" width="896" alt="Whisply demo" /></a>
+  <a href="https://github.com/abboskhonov/whisply"><img src="./public/demo.png" width="896" alt="Whisply demo" /></a>
 </p>
 
 <p align="center">
@@ -21,12 +21,15 @@
   <a href="#development">Development</a>
   ·
   <a href="#contributing">Contributing</a>
+  ·
+  <a href="#acknowledgements">Acknowledgements</a>
 </p>
 
 <p align="center">
   <img src="https://img.shields.io/badge/platform-Linux-18181b?style=flat-square" alt="Linux" />
   <img src="https://img.shields.io/badge/desktop-Tauri%202-18181b?style=flat-square" alt="Tauri 2" />
   <img src="https://img.shields.io/badge/transcription-local-18181b?style=flat-square" alt="Local transcription" />
+  <img src="https://img.shields.io/badge/license-MIT-18181b?style=flat-square" alt="MIT" />
 </p>
 
 ---
@@ -115,13 +118,6 @@ src-tauri/icons/  Desktop icons and product mark
 .github/          Release automation
 ```
 
-## Built with
-
-- [Tauri](https://tauri.app/) and [Rust](https://www.rust-lang.org/) for the desktop shell and native integrations
-- [React](https://react.dev/), [Vite](https://vite.dev/), and [Tailwind CSS](https://tailwindcss.com/) for the interface
-- [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) for local, CPU-backed speech recognition
-- [CPAL](https://github.com/RustAudio/cpal) for microphone capture
-
 ## Contributing
 
 Contributions are welcome—especially Linux compatibility fixes, accessibility improvements, transcription quality work, and thoughtful UX polish.
@@ -133,11 +129,28 @@ Contributions are welcome—especially Linux compatibility fixes, accessibility 
 
 Please do not include downloaded model files, build artifacts, or personal dictation data in a pull request.
 
-## Updates and support
+## Acknowledgements
 
-- **Bug reports and feature ideas:** [open an issue](https://github.com/abboskhonov/whisply/issues)
-- **Latest builds:** [GitHub Releases](https://github.com/abboskhonov/whisply/releases)
-- **Project source:** [github.com/abboskhonov/whisply](https://github.com/abboskhonov/whisply)
+Whisply stands on the shoulders of these projects:
+
+**Platform**
+- [Tauri](https://tauri.app/) — the desktop application framework
+- [Rust](https://www.rust-lang.org/) — systems language powering the backend
+
+**Interface**
+- [React](https://react.dev/) — UI library
+- [Vite](https://vite.dev/) — build tool
+- [Tailwind CSS](https://tailwindcss.com/) — utility-first CSS
+- [shadcn/ui](https://ui.shadcn.com/) — component primitives and code distribution
+
+**Speech recognition**
+- [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) — local, CPU-backed inference engine
+- [CPAL](https://github.com/RustAudio/cpal) — low-level audio capture
+
+**Models**
+- [NVIDIA Parakeet‑TDT 0.6B Multilingual (v3)](https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3) — the default model, covering 25 European languages
+- [NVIDIA Parakeet‑TDT 0.6B English (v2)](https://huggingface.co/nvidia/parakeet-tdt-0.6b-v2) — fast English‑only option
+- [GigaAM Multilingual CTC](https://huggingface.co/istupakov/gigaam-multilingual-ctc-onnx) — Uzbek, Kazakh, and Kyrgyz dictation
 
 ---
 
