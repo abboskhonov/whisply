@@ -5,12 +5,14 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:vps": "vite --host 127.0.0.1",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "format": "prettier --write \"**/*.{ts,tsx}\"",
     "typecheck": "tsc --noEmit",
     "preview": "vite preview",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "tauri:remote": "tauri dev --config src-tauri/tauri.remote.conf.json"
   },
   "dependencies": {
     "@base-ui/react": "^1.6.0",

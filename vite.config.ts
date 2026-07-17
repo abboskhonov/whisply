@@ -12,6 +12,9 @@ export default defineConfig({
     },
   },
   server: {
+    // Keep the VPS dev server reachable through an SSH tunnel, but not from
+    // the public internet. The laptop forwards localhost:1420 to this port.
+    host: "127.0.0.1",
     port: 1420,
     strictPort: true,
   },

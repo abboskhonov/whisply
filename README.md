@@ -91,6 +91,36 @@ make dev
 
 `make dev` starts the Tauri desktop app with the Vite development server. You can also run `bun run tauri dev` once the native dependencies are installed.
 
+### VPS frontend + laptop Tauri window
+
+The frontend dev server can run on the VPS while Tauri runs on the laptop,
+where it can access the native window system, microphone, and global shortcuts.
+
+On the VPS, start Vite:
+
+```bash
+bun install
+bun run dev:vps
+```
+
+Vite listens on `127.0.0.1:1420` and is not exposed publicly. On the laptop,
+create the SSH tunnel:
+
+```bash
+ssh -N -L 1420:127.0.0.1:1420 abbskhnv@100.107.37.51
+```
+
+Keep that terminal open. In a checkout containing `src-tauri`, run from a
+second laptop terminal:
+
+```bash
+bun install
+bun run tauri:remote
+```
+
+Frontend edits on the VPS arrive through Vite HMR. Rust or Tauri edits require
+the native source checkout on the laptop and are rebuilt there.
+
 ### Checks
 
 Before opening a pull request, run the checks that apply to your change:

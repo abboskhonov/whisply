@@ -30,7 +30,7 @@ APP_NAME   = whisply
 BUNDLE_DIR = src-tauri/target/release/bundle
 WIN_TARGET = x86_64-pc-windows-gnu
 
-.PHONY: all linux windows windows-exe rpm deb appimage dev setup setup-linux setup-windows clean
+.PHONY: all linux windows windows-exe rpm deb appimage dev dev-vps setup setup-linux setup-windows clean
 
 # ══════════════════════════════════════════════════════════════
 # BUILD TARGETS
@@ -93,6 +93,11 @@ appimage: setup-linux
 # ── Dev server ───────────────────────────────────────────────
 dev:
 	@cd src-tauri && cargo tauri dev
+
+# ── Remote frontend for a laptop Tauri shell ─────────────────
+# Start this on the VPS, then forward port 1420 over SSH from the laptop.
+dev-vps:
+	@bun run dev:vps
 
 # ══════════════════════════════════════════════════════════════
 # DEPENDENCIES
