@@ -5,7 +5,7 @@
 <h1 align="center">Whisply</h1>
 
 <p align="center">
-  <a href="https://github.com/abboskhonov/whisply"><img src="./public/github.png" width="240" alt="GitHub" /></a>
+  <a href="https://github.com/abboskhonov/whisply"><img src="./public/github.png" width="896" alt="Whisply demo" /></a>
 </p>
 
 <p align="center">
