@@ -7,7 +7,7 @@ import { SidebarNav } from "@/components/sidebar-nav"
 import { SettingsSidebarPanel } from "@/components/settings-nav"
 import { SidebarFooterNav } from "@/components/nav-footer"
 
-export function AppSidebar() {
+export const AppSidebar = React.memo(function AppSidebar() {
   const location = useLocation()
   const navigate = useNavigate()
   const isSettingsRoute = location.pathname.startsWith("/settings")
@@ -41,4 +41,4 @@ export function AppSidebar() {
       <SidebarFooterNav isOpen={settingsOpen} onToggle={toggle} />
     </Sidebar>
   )
-}
+})

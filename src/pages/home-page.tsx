@@ -1,3 +1,4 @@
+import * as React from "react"
 import { Copy, Trash, TrendUp } from "@phosphor-icons/react"
 import { invoke } from "@tauri-apps/api/core"
 import { useMutation } from "@tanstack/react-query"
@@ -20,7 +21,143 @@ const TIME_FORMATTER = new Intl.DateTimeFormat(undefined, {
   minute: "2-digit",
 })
 
-export function HomePage() {
+function localDateKey(date: Date): string {
+  return `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`
+}
+
+function splitRecentDictations(dictations: StoredDictation[]) {
+  const today = localDateKey(new Date())
+  const yesterday = new Date()
+  yesterday.setDate(yesterday.getDate() - 1)
+  const yesterdayKey = localDateKey(yesterday)
+  const todayDictations: StoredDictation[] = []
+  const yesterdayDictations: StoredDictation[] = []
+
+  for (const dictation of dictations) {
+    const dateKey = localDateKey(new Date(dictation.created_at_ms))
+    if (dateKey === today) {
+      todayDictations.push(dictation)
+    } else if (dateKey === yesterdayKey) {
+      yesterdayDictations.push(dictation)
+    }
+  }
+
+  return { todayDictations, yesterdayDictations }
+}
+
+function formatTime(timestamp: number): string {
+  return TIME_FORMATTER.format(new Date(timestamp))
+}
+
+function formatDuration(durationMs: number): string {
+  const totalMinutes = Math.floor(durationMs / 60_000)
+  const hours = Math.floor(totalMinutes / 60)
+  const minutes = totalMinutes % 60
+  return hours > 0 ? `${hours}h ${minutes}m` : `${minutes} min`
+}
+
+type TranscriptGroupProps = {
+  label: string
+  dictations: StoredDictation[]
+}
+
+const RecentTranscriptGroup = React.memo(function RecentTranscriptGroup({
+  label,
+  dictations,
+}: TranscriptGroupProps) {
+  const deleteDictation = useMutation({
+    mutationFn: (id: number) => invoke("delete_dictation", { id }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: dictationQueryKeys.root })
+      toast.success("Dictation deleted")
+    },
+    onError: () => toast.error("Couldn’t delete dictation"),
+  })
+
+  const copyDictation = async (text: string) => {
+    try {
+      await navigator.clipboard.writeText(text)
+      toast.success("Dictation copied")
+    } catch {
+      toast.error("Couldn’t copy dictation")
+    }
+  }
+
+  return (
+    <TranscriptGroup label={label} count={dictations.length}>
+      {dictations.map((dictation) => (
+        <TranscriptRow
+          key={dictation.id}
+          time={formatTime(dictation.created_at_ms)}
+          text={dictation.text}
+          actions={
+            <>
+              <Button
+                variant="ghost"
+                size="icon-xs"
+                className="size-7 text-muted-foreground hover:text-foreground"
+                aria-label="Copy dictation"
+                onClick={() => void copyDictation(dictation.text)}
+              >
+                <Copy className="size-3.5" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon-xs"
+                className="size-7 text-muted-foreground hover:text-destructive"
+                aria-label="Delete dictation"
+                disabled={deleteDictation.isPending}
+                onClick={() => deleteDictation.mutate(dictation.id)}
+              >
+                <Trash className="size-3.5" />
+              </Button>
+            </>
+          }
+        />
+      ))}
+    </TranscriptGroup>
+  )
+})
+
+function WordComparison({
+  todayWordCount,
+  yesterdayWordCount,
+}: {
+  todayWordCount: number
+  yesterdayWordCount: number
+}) {
+  if (yesterdayWordCount === 0) {
+    return (
+      <p className="text-xs text-muted-foreground">No dictations yesterday</p>
+    )
+  }
+
+  const difference = todayWordCount - yesterdayWordCount
+  if (difference > 0) {
+    return (
+      <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+        <TrendUp weight="bold" className="size-3 text-success" />
+        <span className="font-semibold text-success">
+          +{NUMBER_FORMATTER.format(difference)} words
+        </span>
+        <span>vs yesterday</span>
+      </p>
+    )
+  }
+
+  if (difference < 0) {
+    return (
+      <p className="text-xs text-muted-foreground">
+        {NUMBER_FORMATTER.format(Math.abs(difference))} fewer words vs
+        yesterday
+      </p>
+    )
+  }
+
+  return <p className="text-xs text-muted-foreground">Same as yesterday</p>
+}
+
+export const HomePage = React.memo(function HomePage() {
   const { dashboard, error, isLoading } = useHomeDashboard()
   const today = dashboard?.today
   const yesterday = dashboard?.yesterday
@@ -77,7 +214,7 @@ export function HomePage() {
           </p>
         ) : error ? (
           <p className="px-1 text-sm text-destructive" role="alert">
-            Couldn’t load dictation history. Your future dictations will still
+            Couldn't load dictation history. Your future dictations will still
             be saved locally.
           </p>
         ) : recentDictations.length === 0 ? (
@@ -108,137 +245,4 @@ export function HomePage() {
       </Section>
     </PageShell>
   )
-}
-
-type TranscriptGroupProps = {
-  label: string
-  dictations: StoredDictation[]
-}
-
-function RecentTranscriptGroup({ label, dictations }: TranscriptGroupProps) {
-  const deleteDictation = useMutation({
-    mutationFn: (id: number) => invoke("delete_dictation", { id }),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: dictationQueryKeys.root })
-      toast.success("Dictation deleted")
-    },
-    onError: () => toast.error("Couldn’t delete dictation"),
-  })
-
-  const copyDictation = async (text: string) => {
-    try {
-      await navigator.clipboard.writeText(text)
-      toast.success("Dictation copied")
-    } catch {
-      toast.error("Couldn’t copy dictation")
-    }
-  }
-
-  return (
-    <TranscriptGroup label={label} count={dictations.length}>
-      {dictations.map((dictation) => (
-        <TranscriptRow
-          key={dictation.id}
-          time={formatTime(dictation.created_at_ms)}
-          text={dictation.text}
-          actions={
-            <>
-              <Button
-                variant="ghost"
-                size="icon-xs"
-                className="size-7 text-muted-foreground hover:text-foreground"
-                aria-label="Copy dictation"
-                onClick={() => void copyDictation(dictation.text)}
-              >
-                <Copy className="size-3.5" />
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon-xs"
-                className="size-7 text-muted-foreground hover:text-destructive"
-                aria-label="Delete dictation"
-                disabled={deleteDictation.isPending}
-                onClick={() => deleteDictation.mutate(dictation.id)}
-              >
-                <Trash className="size-3.5" />
-              </Button>
-            </>
-          }
-        />
-      ))}
-    </TranscriptGroup>
-  )
-}
-
-function WordComparison({
-  todayWordCount,
-  yesterdayWordCount,
-}: {
-  todayWordCount: number
-  yesterdayWordCount: number
-}) {
-  if (yesterdayWordCount === 0) {
-    return (
-      <p className="text-xs text-muted-foreground">No dictations yesterday</p>
-    )
-  }
-
-  const difference = todayWordCount - yesterdayWordCount
-  if (difference > 0) {
-    return (
-      <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
-        <TrendUp weight="bold" className="size-3 text-success" />
-        <span className="font-semibold text-success">
-          +{NUMBER_FORMATTER.format(difference)} words
-        </span>
-        <span>vs yesterday</span>
-      </p>
-    )
-  }
-
-  if (difference < 0) {
-    return (
-      <p className="text-xs text-muted-foreground">
-        {NUMBER_FORMATTER.format(Math.abs(difference))} fewer words vs yesterday
-      </p>
-    )
-  }
-
-  return <p className="text-xs text-muted-foreground">Same as yesterday</p>
-}
-
-function splitRecentDictations(dictations: StoredDictation[]) {
-  const today = localDateKey(new Date())
-  const yesterday = new Date()
-  yesterday.setDate(yesterday.getDate() - 1)
-  const yesterdayKey = localDateKey(yesterday)
-  const todayDictations: StoredDictation[] = []
-  const yesterdayDictations: StoredDictation[] = []
-
-  for (const dictation of dictations) {
-    const dateKey = localDateKey(new Date(dictation.created_at_ms))
-    if (dateKey === today) {
-      todayDictations.push(dictation)
-    } else if (dateKey === yesterdayKey) {
-      yesterdayDictations.push(dictation)
-    }
-  }
-
-  return { todayDictations, yesterdayDictations }
-}
-
-function localDateKey(date: Date): string {
-  return `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`
-}
-
-function formatTime(timestamp: number): string {
-  return TIME_FORMATTER.format(new Date(timestamp))
-}
-
-function formatDuration(durationMs: number): string {
-  const totalMinutes = Math.floor(durationMs / 60_000)
-  const hours = Math.floor(totalMinutes / 60)
-  const minutes = totalMinutes % 60
-
-  return hours > 0 ? `${hours}h ${minutes}m` : `${minutes} min`
-}
+})

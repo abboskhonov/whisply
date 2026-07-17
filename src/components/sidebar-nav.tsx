@@ -86,7 +86,7 @@ const NAV_BUTTON_CLASS = cn(
 const NAV_ICON_CLASS =
   "size-[18px] text-muted-foreground transition-colors group-data-[active=true]:text-foreground"
 
-export function SidebarNav() {
+const SidebarNavContent = React.memo(function SidebarNavContent() {
   const matchRoute = useMatchRoute()
   const [logsVisible, setLogsVisible] = React.useState(showLogsInSidebar)
 
@@ -122,13 +122,7 @@ export function SidebarNav() {
                 return (
                   <SidebarMenuItem key={item.to}>
                     <SidebarMenuButton
-                      render={
-                        <Link
-                          to={item.to}
-                          preload="intent"
-                          preloadDelay={150}
-                        />
-                      }
+                      render={<Link to={item.to} />}
                       isActive={isActive}
                       tooltip={item.tooltip ?? item.label}
                       className={NAV_BUTTON_CLASS}
@@ -145,4 +139,6 @@ export function SidebarNav() {
       ))}
     </SidebarContent>
   )
-}
+})
+
+export { SidebarNavContent as SidebarNav }
