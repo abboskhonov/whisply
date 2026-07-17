@@ -1,5 +1,7 @@
+import * as React from "react"
 import {
   ArrowSquareOut,
+  ArrowsClockwise,
   DiscordLogo,
   GithubLogo,
   Keyboard,
@@ -10,6 +12,8 @@ import {
 import appIcon from "../../../src-tauri/icons/icon.png"
 
 import { PageShell, Section, SectionHeader } from "@/components/page"
+import { Button } from "@/components/ui/button"
+import { checkForUpdates } from "@/lib/app-updater"
 
 const APP_VERSION = "0.0.2"
 const REPOSITORY_URL = "https://github.com/abboskhonov/whisply"
@@ -37,6 +41,14 @@ const HIGHLIGHTS = [
 ]
 
 export function AboutSettingsPage() {
+  const [checkingForUpdates, setCheckingForUpdates] = React.useState(false)
+
+  const handleUpdateCheck = async () => {
+    setCheckingForUpdates(true)
+    await checkForUpdates()
+    setCheckingForUpdates(false)
+  }
+
   return (
     <PageShell className="gap-10">
       <header className="overflow-hidden rounded-xl bg-primary px-6 py-7 text-primary-foreground shadow-sm sm:px-8">
@@ -90,6 +102,31 @@ export function AboutSettingsPage() {
           description="Whisply is built with Tauri, React, and local speech models."
         />
         <div className="overflow-hidden rounded-lg border border-border/60 bg-card/40">
+          <div className="flex min-h-14 items-center gap-3 px-4 py-3">
+            <ArrowsClockwise
+              weight="regular"
+              className="size-5 shrink-0 text-muted-foreground"
+              aria-hidden
+            />
+            <span className="min-w-0 flex-1">
+              <span className="block text-sm font-medium text-foreground">
+                Check for updates
+              </span>
+              <span className="block text-xs text-muted-foreground">
+                Find the latest version of Whisply.
+              </span>
+            </span>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              disabled={checkingForUpdates}
+              onClick={() => void handleUpdateCheck()}
+            >
+              {checkingForUpdates ? "Checking…" : "Check now"}
+            </Button>
+          </div>
+          <div className="mx-4 border-t border-border/60" />
           <a
             href={REPOSITORY_URL}
             className="group flex min-h-14 items-center gap-3 px-4 py-3 transition-colors hover:bg-muted/60 focus-visible:z-10 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
