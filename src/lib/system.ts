@@ -22,6 +22,7 @@ export type InputStatus = {
 
 export type EvdevAccessStatus = {
   can_read_events: boolean
+  can_write_uinput: boolean
   in_input_group: boolean
   pkexec_available: boolean
   message: string

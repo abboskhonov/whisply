@@ -1,6 +1,8 @@
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::{FromSample, Sample, SizedSample};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
+use std::fs;
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -14,6 +16,12 @@ const LEVEL_EMIT_HZ: u32 = 24;
 const SAMPLE_EMIT_HZ: u32 = 16;
 /// Keep dictations bounded so an accidentally stuck shortcut cannot exhaust RAM.
 const MAX_UTTERANCE_SECONDS: usize = 5 * 60;
+const AUDIO_SETTINGS_FILE: &str = "audio-settings.json";
+
+#[derive(Default, Deserialize, Serialize)]
+struct PersistedAudioSettings {
+    microphone_name: Option<String>,
+}
 
 #[derive(Clone, Debug, Serialize)]
 pub struct DeviceInfo {
@@ -48,6 +56,7 @@ pub struct AudioState {
     pub stream: Mutex<Option<cpal::Stream>>,
     pub config: Mutex<Option<cpal::SupportedStreamConfig>>,
     pub device_name: Mutex<Option<String>>,
+    preferred_device_name: Mutex<Option<String>>,
     pub capturing: AtomicBool,
     pub level_seq: AtomicU64,
     pub sample_seq: AtomicU64,
@@ -69,6 +78,7 @@ impl AudioState {
             stream: Mutex::new(None),
             config: Mutex::new(None),
             device_name: Mutex::new(None),
+            preferred_device_name: Mutex::new(None),
             capturing: AtomicBool::new(false),
             level_seq: AtomicU64::new(0),
             sample_seq: AtomicU64::new(0),
@@ -78,6 +88,63 @@ impl AudioState {
             utterance_buffer: Mutex::new(Vec::with_capacity(16000 * 30)),
         }
     }
+
+    pub fn init(&self, app: &AppHandle) {
+        let Ok(path) = audio_settings_path(app) else {
+            return;
+        };
+        let Ok(contents) = fs::read_to_string(&path) else {
+            return;
+        };
+        match serde_json::from_str::<PersistedAudioSettings>(&contents) {
+            Ok(settings) => {
+                *self.preferred_device_name.lock().unwrap() = settings.microphone_name;
+                log::info!("audio settings loaded from {}", path.display());
+            }
+            Err(error) => log::warn!("invalid audio settings at {}: {error}", path.display()),
+        }
+    }
+
+    fn selected_microphone(&self) -> Option<String> {
+        self.preferred_device_name.lock().ok()?.clone()
+    }
+
+    fn set_selected_microphone(
+        &self,
+        app: &AppHandle,
+        device_name: Option<String>,
+    ) -> Result<(), String> {
+        if let Some(name) = device_name.as_deref() {
+            if !list_input_devices().iter().any(|device| device.name == name) {
+                return Err(format!("Microphone '{name}' was not found"));
+            }
+        }
+        persist_audio_settings(app, &device_name)?;
+        *self
+            .preferred_device_name
+            .lock()
+            .map_err(|error| error.to_string())? = device_name;
+        Ok(())
+    }
+}
+
+fn audio_settings_path(app: &AppHandle) -> Result<PathBuf, String> {
+    app.path()
+        .app_data_dir()
+        .map(|path| path.join(AUDIO_SETTINGS_FILE))
+        .map_err(|error| format!("Could not resolve audio settings path: {error}"))
+}
+
+fn persist_audio_settings(app: &AppHandle, microphone_name: &Option<String>) -> Result<(), String> {
+    let path = audio_settings_path(app)?;
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).map_err(|error| error.to_string())?;
+    }
+    let contents = serde_json::to_string_pretty(&PersistedAudioSettings {
+        microphone_name: microphone_name.clone(),
+    })
+    .map_err(|error| error.to_string())?;
+    fs::write(path, contents).map_err(|error| error.to_string())
 }
 
 fn classify_error(msg: &str) -> &'static str {
@@ -137,6 +204,20 @@ pub fn list_microphones() -> Vec<DeviceInfo> {
 }
 
 #[tauri::command]
+pub fn get_selected_microphone(app: AppHandle) -> Option<String> {
+    app.state::<Arc<AudioState>>().selected_microphone()
+}
+
+#[tauri::command]
+pub fn set_selected_microphone(
+    app: AppHandle,
+    device_name: Option<String>,
+) -> Result<(), String> {
+    app.state::<Arc<AudioState>>()
+        .set_selected_microphone(&app, device_name)
+}
+
+#[tauri::command]
 pub fn start_audio_capture(app: AppHandle, device_name: Option<String>) -> Result<AudioStarted, String> {
     let state = app.state::<Arc<AudioState>>();
 
@@ -151,8 +232,9 @@ pub fn start_audio_capture(app: AppHandle, device_name: Option<String>) -> Resul
         });
     }
 
+    let requested_device = device_name.or_else(|| state.selected_microphone());
     let host = cpal::default_host();
-    let device = if let Some(ref want) = device_name {
+    let device = if let Some(ref want) = requested_device {
         host.input_devices()
             .map_err(|e| format!("Failed to enumerate input devices: {e}"))?
             .find(|d| d.name().ok().as_deref() == Some(want.as_str()))

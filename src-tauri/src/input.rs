@@ -105,10 +105,6 @@ fn type_with_ydotool(text: &str) -> Result<(), String> {
     }
 }
 
-pub fn is_inserting(app: &AppHandle) -> bool {
-    app.state::<InputState>().inserting.load(Ordering::SeqCst)
-}
-
 #[cfg(target_os = "linux")]
 fn paste_with_uinput(device: &mut VirtualDevice) -> Result<(), String> {
     let key = |code: KeyCode, value| InputEvent::new(evdev::EventType::KEY.0, code.code(), value);

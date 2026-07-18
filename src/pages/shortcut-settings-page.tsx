@@ -84,7 +84,9 @@ export function ShortcutSettingsPage() {
     }
     try {
       const access = await getEvdevAccessStatus()
-      setHasShortcutAccess(access.can_read_events || access.in_input_group)
+      setHasShortcutAccess(
+        access.can_read_events && access.can_write_uinput
+      )
       setAccessMessage(access.message)
     } catch (cause) {
       setHasShortcutAccess(false)
@@ -100,8 +102,8 @@ export function ShortcutSettingsPage() {
   const fixShortcutAccess = async () => {
     setFixingAccess(true)
     try {
-      setAccessMessage(await fixEvdevPermissions())
-      setHasShortcutAccess(true)
+      await fixEvdevPermissions()
+      await checkShortcutAccess()
     } catch (cause) {
       setHasShortcutAccess(false)
       setAccessMessage(cause instanceof Error ? cause.message : String(cause))
@@ -162,9 +164,9 @@ export function ShortcutSettingsPage() {
         <div className="flex items-start gap-2 rounded-lg bg-muted/60 px-3 py-2.5 text-xs text-muted-foreground">
           <Info weight="fill" className="mt-0.5 size-3.5 shrink-0" />
           <p>
-            On Wayland, printable shortcuts can also reach the focused app.
-            Ctrl + Space is the default: it is quick to hold and avoids typing
-            into the focused app. A function key is another reliable option.
+            On Wayland, Whisply exclusively captures the saved shortcut so it
+            does not reach the focused app. This requires access to both
+            /dev/input and /dev/uinput.
           </p>
         </div>
       </Section>

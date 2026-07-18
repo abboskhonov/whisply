@@ -228,10 +228,16 @@ export function StepPermissions({ onNext, onBack }: StepPermissionsProps) {
     }
     try {
       const evdev: EvdevAccessStatus = await getEvdevAccessStatus()
-      if (evdev.can_read_events) {
+      if (evdev.can_read_events && evdev.can_write_uinput) {
         setItem("system", "global-shortcuts", {
           status: "granted",
-          description: "Global keyboard events accessible",
+          description: "Exclusive global shortcuts accessible",
+        })
+      } else if (evdev.can_read_events) {
+        setItem("system", "global-shortcuts", {
+          status: "denied",
+          description: "Need write access to /dev/uinput",
+          detail: "Exclusive shortcuts re-inject non-shortcut keys through /dev/uinput",
         })
       } else if (evdev.in_input_group) {
         setItem("system", "global-shortcuts", {
@@ -384,12 +390,8 @@ export function StepPermissions({ onNext, onBack }: StepPermissionsProps) {
       description: "Running pkexec…",
     })
     try {
-      const result = await fixEvdevPermissions()
-      setItem("system", "global-shortcuts", {
-        status: "granted",
-        description: result,
-        detail: "Log out and back in for changes to take effect",
-      })
+      await fixEvdevPermissions()
+      await refreshEvdev()
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
       setItem("system", "global-shortcuts", {
