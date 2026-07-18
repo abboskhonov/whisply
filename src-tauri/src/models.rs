@@ -1,5 +1,6 @@
 use bzip2::read::BzDecoder;
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use std::fs::{self, File};
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
@@ -34,6 +35,7 @@ pub enum ModelSource {
     Archive {
         archive_name: &'static str,
         download_url: &'static str,
+        sha256: &'static str,
     },
     Files(&'static [ModelFile]),
 }
@@ -42,6 +44,8 @@ pub enum ModelSource {
 pub struct ModelFile {
     pub destination: &'static str,
     pub download_url: &'static str,
+    pub sha256: &'static str,
+    pub installed_sha256: &'static str,
 }
 
 #[derive(Clone, Copy)]
@@ -54,10 +58,14 @@ const GIGA_AM_MULTILINGUAL_FILES: [ModelFile; 2] = [
     ModelFile {
         destination: "model.int8.onnx",
         download_url: "https://huggingface.co/istupakov/gigaam-multilingual-ctc-onnx/resolve/458860e1983aef670dd9795fb6af603c82767d5d/multilingual_ctc.int8.onnx?download=true",
+        sha256: "e08e27ae5669b39f0c378fae101bbbb9a80505f74f9b66719c309bf5b894a480",
+        installed_sha256: "cf47ca34a01262dd753394163cdaaf1a354f0c978ab5c9c19829ca46cba5f354",
     },
     ModelFile {
         destination: "tokens.txt",
         download_url: "https://huggingface.co/istupakov/gigaam-multilingual-ctc-onnx/resolve/458860e1983aef670dd9795fb6af603c82767d5d/multilingual_vocab.txt?download=true",
+        sha256: "4d130287892e1099fedfb3f93c4b4cf8a263151158801680b28977d1be4133f4",
+        installed_sha256: "4d130287892e1099fedfb3f93c4b4cf8a263151158801680b28977d1be4133f4",
     },
 ];
 
@@ -76,6 +84,7 @@ const MODELS: [ModelSpec; 3] = [
         source: ModelSource::Archive {
             archive_name: "parakeet-tdt-0.6b-v3-int8.tar.bz2",
             download_url: "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8.tar.bz2",
+            sha256: "5793d0fd397c5778d2cf2126994d58e9d56b1be7c04d13c7a15bb1b4eafb16bf",
         },
         format: ModelFormat::NemoTransducer,
         download_size_bytes: 487_170_055,
@@ -94,6 +103,7 @@ const MODELS: [ModelSpec; 3] = [
         source: ModelSource::Archive {
             archive_name: "parakeet-tdt-0.6b-v2-int8.tar.bz2",
             download_url: "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8.tar.bz2",
+            sha256: "157c157bc51155e03e37d2466522a3a737dd9c72bb25f36eb18912964161e1ad",
         },
         format: ModelFormat::NemoTransducer,
         download_size_bytes: 482_468_385,
@@ -193,13 +203,13 @@ impl ModelManager {
             })?;
         let spec = model_spec(&selected)?;
         let path = models_dir(app)?.join(spec.directory_name);
-        validate_model_dir(&path, spec.format)?;
+        validate_model_dir(&path, spec)?;
         Ok((path, spec.format))
     }
 
     fn select(&self, app: &AppHandle, model_id: &str) -> Result<(), String> {
         let spec = model_spec(model_id)?;
-        validate_model_dir(&models_dir(app)?.join(spec.directory_name), spec.format)?;
+        validate_model_dir(&models_dir(app)?.join(spec.directory_name), spec)?;
         *self.selected.lock().map_err(|error| error.to_string())? = Some(model_id.to_string());
         persist_selection(app, Some(model_id))
     }
@@ -241,8 +251,8 @@ fn persist_selection(app: &AppHandle, selected_model_id: Option<&str>) -> Result
     fs::rename(&temporary, &path).map_err(|error| error.to_string())
 }
 
-fn validate_model_dir(path: &Path, format: ModelFormat) -> Result<(), String> {
-    let required_files: &[(&str, u64)] = match format {
+fn validate_model_dir(path: &Path, spec: ModelSpec) -> Result<(), String> {
+    let required_files: &[(&str, u64)] = match spec.format {
         ModelFormat::NemoTransducer => &[
             ("encoder.int8.onnx", 100_000_000),
             ("decoder.int8.onnx", 1_000),
@@ -266,6 +276,96 @@ fn validate_model_dir(path: &Path, format: ModelFormat) -> Result<(), String> {
                 candidate.display()
             ));
         }
+    }
+    if let ModelSource::Files(files) = spec.source {
+        for file in files {
+            verify_file_digest(&path.join(file.destination), file.installed_sha256)
+                .map_err(|error| format!("model validation: {error}"))?;
+        }
+    }
+    Ok(())
+}
+
+fn verify_file_digest(path: &Path, expected: &str) -> Result<(), String> {
+    let mut file = File::open(path).map_err(|_| format!("{} is missing", path.display()))?;
+    let mut digest = Sha256::new();
+    let mut buffer = [0_u8; 256 * 1024];
+    loop {
+        let count = file
+            .read(&mut buffer)
+            .map_err(|error| format!("could not read {}: {error}", path.display()))?;
+        if count == 0 {
+            break;
+        }
+        digest.update(&buffer[..count]);
+    }
+    let actual = format!("{:x}", digest.finalize());
+    if actual == expected {
+        Ok(())
+    } else {
+        Err(format!(
+            "{} has an unexpected SHA-256 digest",
+            path.display()
+        ))
+    }
+}
+
+fn validate_staged_model(path: &Path, spec: ModelSpec) -> Result<(), String> {
+    validate_model_dir(path, spec).map_err(|error| format!("model validation: {error}"))?;
+    crate::transcription::create_recognizer(path, spec.format)
+        .map(|_| ())
+        .map_err(|_| {
+            "recognizer initialization: could not initialize the staged speech model".to_string()
+        })
+}
+
+fn unique_path(base: &Path, name: &str) -> PathBuf {
+    base.join(format!(
+        ".{name}-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos()
+    ))
+}
+
+fn replace_model_dir<F>(staged: &Path, live: &Path, select: F) -> Result<(), String>
+where
+    F: FnOnce() -> Result<(), String>,
+{
+    let backup = unique_path(
+        live.parent()
+            .ok_or_else(|| "model validation: invalid model path".to_string())?,
+        "model-backup",
+    );
+    let had_live_model = live.exists();
+    if had_live_model {
+        fs::rename(live, &backup)
+            .map_err(|_| "model validation: could not preserve the existing model".to_string())?;
+    }
+
+    if let Err(error) = fs::rename(staged, live) {
+        if had_live_model {
+            let _ = fs::rename(&backup, live);
+        }
+        return Err(format!(
+            "model validation: could not activate the verified model: {error}"
+        ));
+    }
+
+    if let Err(error) = select() {
+        let _ = fs::remove_dir_all(live);
+        if had_live_model {
+            let _ = fs::rename(&backup, live);
+        }
+        return Err(error);
+    }
+
+    if had_live_model {
+        fs::remove_dir_all(&backup).map_err(|error| {
+            format!("model validation: could not remove the replaced model: {error}")
+        })?;
     }
     Ok(())
 }
@@ -331,7 +431,8 @@ fn download_and_extract(
         ModelSource::Archive {
             archive_name,
             download_url,
-        } => download_archive(app, manager, spec, archive_name, download_url),
+            sha256,
+        } => download_archive(app, manager, spec, archive_name, download_url, sha256),
         ModelSource::Files(files) => download_files(app, manager, spec, files),
     }
 }
@@ -342,11 +443,13 @@ fn download_archive(
     spec: ModelSpec,
     archive_name: &str,
     download_url: &str,
+    sha256: &str,
 ) -> Result<(), String> {
     let base = models_dir(app)?;
     fs::create_dir_all(&base).map_err(|error| error.to_string())?;
     let archive_path = base.join(format!("{archive_name}.part"));
     let model_path = base.join(spec.directory_name);
+    let staging_root = unique_path(&base, "model-staging");
     let _ = fs::remove_file(&archive_path);
 
     emit_progress(
@@ -413,6 +516,8 @@ fn download_archive(
         }
     }
     output.sync_all().map_err(|error| error.to_string())?;
+    verify_file_digest(&archive_path, sha256)
+        .map_err(|error| format!("download verification: {error}"))?;
 
     emit_progress(
         app,
@@ -422,11 +527,15 @@ fn download_archive(
         total,
         "Installing model…",
     );
-    let _ = fs::remove_dir_all(&model_path);
+    fs::create_dir_all(&staging_root).map_err(|error| error.to_string())?;
     let archive = File::open(&archive_path).map_err(|error| error.to_string())?;
-    Archive::new(BzDecoder::new(archive))
-        .unpack(&base)
-        .map_err(|error| format!("Could not extract model: {error}"))?;
+    if let Err(error) = Archive::new(BzDecoder::new(archive)).unpack(&staging_root) {
+        let _ = fs::remove_dir_all(&staging_root);
+        return Err(format!(
+            "model validation: could not extract model: {error}"
+        ));
+    }
+    let staged_model = staging_root.join(spec.directory_name);
 
     emit_progress(
         app,
@@ -436,8 +545,13 @@ fn download_archive(
         total,
         "Verifying model files…",
     );
-    validate_model_dir(&model_path, spec.format)?;
-    manager.select(app, spec.id)?;
+    if let Err(error) = validate_staged_model(&staged_model, spec) {
+        let _ = fs::remove_dir_all(&staging_root);
+        return Err(error);
+    }
+    let result = replace_model_dir(&staged_model, &model_path, || manager.select(app, spec.id));
+    let _ = fs::remove_dir_all(&staging_root);
+    result?;
     let _ = fs::remove_file(&archive_path);
     emit_progress(app, spec, "ready", total, total, "Model ready");
     log::info!("speech model installed and selected: {}", spec.id);
@@ -453,7 +567,7 @@ fn download_files(
     let base = models_dir(app)?;
     fs::create_dir_all(&base).map_err(|error| error.to_string())?;
     let model_path = base.join(spec.directory_name);
-    let temporary_path = base.join(format!("{}.part", spec.directory_name));
+    let temporary_path = unique_path(&base, "model-staging");
     let _ = fs::remove_dir_all(&temporary_path);
     fs::create_dir_all(&temporary_path).map_err(|error| error.to_string())?;
 
@@ -520,6 +634,8 @@ fn download_files(
             }
         }
         output.sync_all().map_err(|error| error.to_string())?;
+        verify_file_digest(&temporary_path.join(file.destination), file.sha256)
+            .map_err(|error| format!("download verification: {error}"))?;
     }
 
     if matches!(spec.format, ModelFormat::GigaAmCtc) {
@@ -533,10 +649,13 @@ fn download_files(
         spec.download_size_bytes,
         "Verifying model files…",
     );
-    validate_model_dir(&temporary_path, spec.format)?;
-    let _ = fs::remove_dir_all(&model_path);
-    fs::rename(&temporary_path, &model_path).map_err(|error| error.to_string())?;
-    manager.select(app, spec.id)?;
+    if let Err(error) = validate_staged_model(&temporary_path, spec) {
+        let _ = fs::remove_dir_all(&temporary_path);
+        return Err(error);
+    }
+    replace_model_dir(&temporary_path, &model_path, || {
+        manager.select(app, spec.id)
+    })?;
     emit_progress(
         app,
         spec,
@@ -573,7 +692,7 @@ pub fn list_models(
             license: spec.license.to_string(),
             source_url: spec.source_url.to_string(),
             download_size_bytes: spec.download_size_bytes,
-            installed: validate_model_dir(&base.join(spec.directory_name), spec.format).is_ok(),
+            installed: validate_model_dir(&base.join(spec.directory_name), *spec).is_ok(),
             selected: selected.as_deref() == Some(spec.id),
         })
         .collect())
@@ -654,5 +773,67 @@ mod tests {
                 .collect::<Vec<_>>()
         );
         let _ = fs::remove_file(model_path);
+    }
+
+    fn test_dir(name: &str) -> PathBuf {
+        let path = unique_path(&std::env::temp_dir(), name);
+        fs::create_dir_all(&path).expect("create test directory");
+        path
+    }
+
+    #[test]
+    fn missing_and_undersized_model_files_are_rejected() {
+        let path = test_dir("whisply-model-validation");
+        assert!(validate_model_dir(&path, MODELS[2]).is_err());
+
+        fs::write(path.join("model.int8.onnx"), [0_u8; 32]).expect("write small model");
+        fs::write(path.join("tokens.txt"), "tokens").expect("write tokens");
+        assert!(validate_model_dir(&path, MODELS[2]).is_err());
+        let _ = fs::remove_dir_all(path);
+    }
+
+    #[test]
+    fn digest_mismatches_are_rejected() {
+        let root = test_dir("whisply-digest-validation");
+        let path = root.join("file");
+        fs::write(&path, "not the expected file").expect("write file");
+        assert!(verify_file_digest(&path, "00").is_err());
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn failed_replacement_restores_the_live_model() {
+        let root = test_dir("whisply-model-rollback");
+        let live = root.join("live");
+        let staged = root.join("staged");
+        fs::create_dir_all(&live).expect("create live model");
+        fs::create_dir_all(&staged).expect("create staged model");
+        fs::write(live.join("marker"), "old").expect("write live marker");
+        fs::write(staged.join("marker"), "new").expect("write staged marker");
+
+        assert!(replace_model_dir(&staged, &live, || Err("selection failed".to_string())).is_err());
+        assert_eq!(
+            fs::read_to_string(live.join("marker")).expect("read restored model"),
+            "old"
+        );
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn successful_replacement_activates_the_staged_model() {
+        let root = test_dir("whisply-model-replacement");
+        let live = root.join("live");
+        let staged = root.join("staged");
+        fs::create_dir_all(&live).expect("create live model");
+        fs::create_dir_all(&staged).expect("create staged model");
+        fs::write(live.join("marker"), "old").expect("write live marker");
+        fs::write(staged.join("marker"), "new").expect("write staged marker");
+
+        replace_model_dir(&staged, &live, || Ok(())).expect("replace model");
+        assert_eq!(
+            fs::read_to_string(live.join("marker")).expect("read replacement"),
+            "new"
+        );
+        let _ = fs::remove_dir_all(root);
     }
 }
