@@ -45,8 +45,20 @@ export async function listMicrophones(): Promise<DeviceInfo[]> {
   return trackedInvoke<DeviceInfo[]>("list_microphones")
 }
 
+export async function getSelectedMicrophone(): Promise<string | null> {
+  if (!isTauri()) return null
+  return trackedInvoke<string | null>("get_selected_microphone")
+}
+
+export async function setSelectedMicrophone(
+  deviceName: string | null
+): Promise<void> {
+  if (!isTauri()) return
+  await trackedInvoke("set_selected_microphone", { deviceName })
+}
+
 /**
- * Native-only: open the given (or default) input device and start emitting
+ * Native-only: open the given (or configured) input device and start emitting
  * `whisply://mic-level` and `whisply://audio-data` events.
  */
 export async function startAudioCapture(

@@ -1,17 +1,24 @@
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex};
 use tauri::AppHandle;
 use tauri::Manager;
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
 
 #[cfg(target_os = "linux")]
-use evdev::{EventSummary, KeyCode};
+use handy_keys::{Hotkey, HotkeyId, HotkeyManager, HotkeyState};
+#[cfg(target_os = "linux")]
+use std::sync::mpsc::{self, Sender};
 
 // ── State ───────────────────────────────────────────────────────────────────
 
-/// Track the active dictation shortcut for both the X11 plugin and the
-/// Wayland evdev listener.
-pub struct ShortcutRegistry(pub Arc<Mutex<Vec<RegisteredShortcut>>>);
+/// Track the active dictation shortcut for the platform shortcut backend.
+pub struct ShortcutRegistry {
+    shortcuts: Arc<Mutex<Vec<RegisteredShortcut>>>,
+    /// Wayland shortcuts must be intercepted rather than merely observed so
+    /// the focused app cannot receive the same key combination.
+    #[cfg(target_os = "linux")]
+    exclusive_sender: Mutex<Option<Sender<ExclusiveCommand>>>,
+}
 
 /// How the shortcut should react to the OS press/release events.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -38,24 +45,230 @@ pub struct RegisteredShortcut {
     pub key_str: String,
     /// Parsed `Shortcut` from the plugin. Held so we can unregister.
     pub parsed: Shortcut,
-    /// Hold (press-and-hold) or toggle (tap to start, tap again to stop).
-    pub mode: TriggerMode,
-    #[cfg(target_os = "linux")]
-    pub evdev_key: KeyCode,
-    #[cfg(target_os = "linux")]
-    pub modifiers: ModifierMask,
 }
 
 impl ShortcutRegistry {
     pub fn new() -> Self {
-        Self(Arc::new(Mutex::new(Vec::new())))
+        Self {
+            shortcuts: Arc::new(Mutex::new(Vec::new())),
+            #[cfg(target_os = "linux")]
+            exclusive_sender: Mutex::new(None),
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    fn exclusive_sender(&self, app: AppHandle) -> Result<Sender<ExclusiveCommand>, String> {
+        let mut sender = self
+            .exclusive_sender
+            .lock()
+            .map_err(|error| error.to_string())?;
+        if let Some(sender) = sender.as_ref() {
+            return Ok(sender.clone());
+        }
+
+        let (command_sender, command_receiver) = mpsc::channel();
+        let (ready_sender, ready_receiver) = mpsc::channel();
+        std::thread::spawn(move || {
+            let manager = match HotkeyManager::new_with_blocking() {
+                Ok(manager) => {
+                    let _ = ready_sender.send(Ok(()));
+                    manager
+                }
+                Err(error) => {
+                    let _ = ready_sender.send(Err(error.to_string()));
+                    return;
+                }
+            };
+            run_exclusive_shortcut_manager(manager, command_receiver, app);
+        });
+
+        match ready_receiver
+            .recv()
+            .map_err(|_| "Exclusive shortcut listener failed to start".to_string())?
+        {
+            Ok(()) => {
+                *sender = Some(command_sender.clone());
+                Ok(command_sender)
+            }
+            Err(error) => Err(format!(
+                "Couldn't enable exclusive Wayland shortcuts: {error}"
+            )),
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    fn replace_exclusive_shortcut(
+        &self,
+        app: AppHandle,
+        hotkey: Hotkey,
+        key_str: String,
+        mode: TriggerMode,
+    ) -> Result<(), String> {
+        let sender = self.exclusive_sender(app)?;
+        let (response_sender, response_receiver) = mpsc::channel();
+        sender
+            .send(ExclusiveCommand::Replace {
+                hotkey,
+                key_str,
+                mode,
+                response: response_sender,
+            })
+            .map_err(|_| "Exclusive shortcut listener stopped unexpectedly".to_string())?;
+        response_receiver
+            .recv()
+            .map_err(|_| "Exclusive shortcut listener stopped unexpectedly".to_string())?
+    }
+
+    #[cfg(target_os = "linux")]
+    fn clear_exclusive_shortcut(&self) -> Result<(), String> {
+        let sender = match self
+            .exclusive_sender
+            .lock()
+            .map_err(|error| error.to_string())?
+            .as_ref()
+        {
+            Some(sender) => sender.clone(),
+            None => return Ok(()),
+        };
+        let (response_sender, response_receiver) = mpsc::channel();
+        sender
+            .send(ExclusiveCommand::Clear {
+                response: response_sender,
+            })
+            .map_err(|_| "Exclusive shortcut listener stopped unexpectedly".to_string())?;
+        response_receiver
+            .recv()
+            .map_err(|_| "Exclusive shortcut listener stopped unexpectedly".to_string())?
+    }
+
+    #[cfg(target_os = "linux")]
+    fn set_exclusive_cancel(&self, enabled: bool) -> Result<(), String> {
+        let sender = match self
+            .exclusive_sender
+            .lock()
+            .map_err(|error| error.to_string())?
+            .as_ref()
+        {
+            Some(sender) => sender.clone(),
+            None => return Ok(()),
+        };
+        // Dictation can enable or disable Escape from the shortcut manager's
+        // own event thread. Queue the change instead of waiting for a reply,
+        // otherwise that thread would deadlock waiting on itself.
+        sender
+            .send(ExclusiveCommand::SetCancel { enabled })
+            .map_err(|_| "Exclusive shortcut listener stopped unexpectedly".to_string())
+    }
+}
+
+#[cfg(target_os = "linux")]
+enum ExclusiveCommand {
+    Replace {
+        hotkey: Hotkey,
+        key_str: String,
+        mode: TriggerMode,
+        response: Sender<Result<(), String>>,
+    },
+    Clear {
+        response: Sender<Result<(), String>>,
+    },
+    SetCancel {
+        enabled: bool,
+    },
+}
+
+/// Owns the blocking `handy-keys` manager on one thread. The library grabs
+/// physical keyboards, consumes registered hotkeys, and re-injects every
+/// other event through uinput.
+#[cfg(target_os = "linux")]
+fn run_exclusive_shortcut_manager(
+    manager: HotkeyManager,
+    commands: mpsc::Receiver<ExclusiveCommand>,
+    app: AppHandle,
+) {
+    let mut active: Option<(HotkeyId, String, TriggerMode)> = None;
+    let mut cancel: Option<HotkeyId> = None;
+
+    loop {
+        while let Some(event) = manager.try_recv() {
+            if Some(event.id) == cancel {
+                if event.state == HotkeyState::Pressed {
+                    crate::dictation::cancel_pending(&app);
+                }
+                continue;
+            }
+            if let Some((id, key_str, mode)) = &active {
+                if event.id == *id {
+                    match event.state {
+                        HotkeyState::Pressed => drive_press(&app, key_str, *mode),
+                        HotkeyState::Released => drive_release(&app, key_str, *mode),
+                    }
+                }
+            }
+        }
+
+        match commands.recv_timeout(std::time::Duration::from_millis(10)) {
+            Ok(ExclusiveCommand::Replace {
+                hotkey,
+                key_str,
+                mode,
+                response,
+            }) => {
+                if let Some((id, _, _)) = active.take() {
+                    let _ = manager.unregister(id);
+                }
+                let result = manager.register(hotkey).map_or_else(
+                    |error| Err(format!("Couldn't register exclusive shortcut: {error}")),
+                    |id| {
+                        active = Some((id, key_str, mode));
+                        Ok(())
+                    },
+                );
+                let _ = response.send(result);
+            }
+            Ok(ExclusiveCommand::Clear { response }) => {
+                if let Some((id, _, _)) = active.take() {
+                    let _ = manager.unregister(id);
+                }
+                let _ = response.send(Ok(()));
+            }
+            Ok(ExclusiveCommand::SetCancel { enabled }) => {
+                let result = if enabled && cancel.is_none() {
+                    "Escape"
+                        .parse::<Hotkey>()
+                        .map_err(|error| error.to_string())
+                        .and_then(|hotkey| {
+                            manager
+                                .register(hotkey)
+                                .map(|id| cancel = Some(id))
+                                .map_err(|error| error.to_string())
+                        })
+                } else if !enabled {
+                    if let Some(id) = cancel.take() {
+                        let _ = manager.unregister(id);
+                    }
+                    Ok(())
+                } else {
+                    Ok(())
+                };
+                if let Err(error) = result {
+                    log::warn!("could not update Escape dictation cancellation: {error}");
+                }
+            }
+            Err(mpsc::RecvTimeoutError::Timeout) => {}
+            Err(mpsc::RecvTimeoutError::Disconnected) => return,
+        }
     }
 }
 
 /// Escape is only captured while a completed recording is being transcribed.
 /// Keeping it temporary avoids stealing Escape from the user's active app.
 pub fn enable_cancel_shortcut(app: &AppHandle, _generation: u64) {
+    #[cfg(target_os = "linux")]
     if uses_evdev_backend() {
+        if let Err(error) = app.state::<ShortcutRegistry>().set_exclusive_cancel(true) {
+            log::warn!("could not enable Escape dictation cancellation: {error}");
+        }
         return;
     }
 
@@ -79,7 +292,11 @@ pub fn enable_cancel_shortcut(app: &AppHandle, _generation: u64) {
 }
 
 pub fn disable_cancel_shortcut(app: &AppHandle) {
+    #[cfg(target_os = "linux")]
     if uses_evdev_backend() {
+        if let Err(error) = app.state::<ShortcutRegistry>().set_exclusive_cancel(false) {
+            log::warn!("could not disable Escape dictation cancellation: {error}");
+        }
         return;
     }
 
@@ -88,56 +305,30 @@ pub fn disable_cancel_shortcut(app: &AppHandle) {
     }
 }
 
-/// Tauri-managed state: flag so we only start the listener once.
-pub struct ListenerRunning(pub Arc<AtomicBool>);
-
-impl ListenerRunning {
-    pub fn new() -> Self {
-        Self(Arc::new(AtomicBool::new(false)))
-    }
-}
-
 // ── String → Shortcut conversion ────────────────────────────────────────────
 
 /// Convert our combo format ("Super+V", "Ctrl+CapsLock") to the format
-/// `tauri-plugin-global-shortcut` expects ("Super+V", "Ctrl+CapsLock"
-/// — same on Linux, but on macOS we normalise "Super" → "CommandOrControl"
-/// and lowercase the key).
+/// `tauri-plugin-global-shortcut` expects.
 fn normalize_for_plugin(raw: &str) -> String {
     let parts: Vec<String> = raw
         .split('+')
         .map(|p| p.trim())
         .filter(|p| !p.is_empty())
-        .map(|p| {
-            // Normalise the modifier names the plugin understands.
-            match p.to_lowercase().as_str() {
-                "ctrl" | "control" => "Ctrl".to_string(),
-                "alt" | "option" => "Alt".to_string(),
-                "shift" => "Shift".to_string(),
-                "super" | "meta" | "cmd" | "command" | "win" | "windows" => "Super".to_string(),
-                other => {
-                    // Capitalise the first character of the key for display,
-                    // but keep the rest (so "CapsLock" stays "CapsLock" and
-                    // "," stays ",").
-                    let mut chars = other.chars();
-                    match chars.next() {
-                        Some(c) => c.to_uppercase().collect::<String>() + chars.as_str(),
-                        None => other.to_string(),
-                    }
+        .map(|p| match p.to_lowercase().as_str() {
+            "ctrl" | "control" => "Ctrl".to_string(),
+            "alt" | "option" => "Alt".to_string(),
+            "shift" => "Shift".to_string(),
+            "super" | "meta" | "cmd" | "command" | "win" | "windows" => "Super".to_string(),
+            other => {
+                let mut chars = other.chars();
+                match chars.next() {
+                    Some(c) => c.to_uppercase().collect::<String>() + chars.as_str(),
+                    None => other.to_string(),
                 }
             }
         })
         .collect();
     parts.join("+")
-}
-
-#[cfg(target_os = "linux")]
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub struct ModifierMask {
-    ctrl: bool,
-    alt: bool,
-    shift: bool,
-    super_: bool,
 }
 
 #[cfg(target_os = "linux")]
@@ -152,171 +343,11 @@ fn uses_evdev_backend() -> bool {
     false
 }
 
-#[cfg(target_os = "linux")]
-fn parse_evdev_shortcut(raw: &str) -> Result<(KeyCode, ModifierMask), String> {
-    let mut modifiers = ModifierMask::default();
-    let mut key = None;
-
-    for part in raw.split('+').map(str::trim).filter(|p| !p.is_empty()) {
-        match part.to_lowercase().as_str() {
-            "ctrl" | "control" => modifiers.ctrl = true,
-            "alt" | "option" => modifiers.alt = true,
-            "shift" => modifiers.shift = true,
-            "super" | "meta" | "cmd" | "command" | "win" | "windows" => modifiers.super_ = true,
-            value => key = Some(evdev_key_from_str(value)?),
-        }
-    }
-
-    key.map(|key| (key, modifiers))
-        .ok_or_else(|| format!("No non-modifier key in '{raw}'"))
-}
-
-#[cfg(target_os = "linux")]
-fn evdev_key_from_str(value: &str) -> Result<KeyCode, String> {
-    use std::str::FromStr;
-
-    if value.len() == 1 && value.as_bytes()[0].is_ascii_alphanumeric() {
-        return KeyCode::from_str(&format!("KEY_{}", value.to_ascii_uppercase()))
-            .map_err(|_| format!("Unknown key: '{value}'"));
-    }
-
-    if value
-        .strip_prefix('f')
-        .and_then(|number| number.parse::<u8>().ok())
-        .is_some_and(|number| (1..=24).contains(&number))
-    {
-        return KeyCode::from_str(&format!("KEY_{}", value.to_ascii_uppercase()))
-            .map_err(|_| format!("Unknown key: '{value}'"));
-    }
-
-    let canonical = match value {
-        "space" => "KEY_SPACE",
-        "enter" | "return" => "KEY_ENTER",
-        "tab" => "KEY_TAB",
-        "escape" | "esc" => "KEY_ESC",
-        "backspace" => "KEY_BACKSPACE",
-        "delete" | "del" => "KEY_DELETE",
-        "insert" | "ins" => "KEY_INSERT",
-        "arrowup" | "up" => "KEY_UP",
-        "arrowdown" | "down" => "KEY_DOWN",
-        "arrowleft" | "left" => "KEY_LEFT",
-        "arrowright" | "right" => "KEY_RIGHT",
-        "home" => "KEY_HOME",
-        "end" => "KEY_END",
-        "pageup" | "pgup" => "KEY_PAGEUP",
-        "pagedown" | "pgdn" => "KEY_PAGEDOWN",
-        "capslock" | "caps" => "KEY_CAPSLOCK",
-        "numlock" => "KEY_NUMLOCK",
-        "scrolllock" | "scroll" => "KEY_SCROLLLOCK",
-        "printscreen" | "prtsc" => "KEY_SYSRQ",
-        "pause" => "KEY_PAUSE",
-        "," | "comma" => "KEY_COMMA",
-        "." | "period" | "dot" => "KEY_DOT",
-        "/" | "slash" => "KEY_SLASH",
-        ";" | "semicolon" => "KEY_SEMICOLON",
-        "'" | "quote" | "apostrophe" => "KEY_APOSTROPHE",
-        "[" | "leftbracket" | "openbracket" => "KEY_LEFTBRACE",
-        "]" | "rightbracket" | "closebracket" => "KEY_RIGHTBRACE",
-        "\\" | "backslash" => "KEY_BACKSLASH",
-        "-" | "minus" | "dash" => "KEY_MINUS",
-        "=" | "equal" | "equals" => "KEY_EQUAL",
-        "`" | "backquote" | "backtick" | "grave" => "KEY_GRAVE",
-        "kp0" | "kp_0" => "KEY_KP0",
-        "kp1" | "kp_1" => "KEY_KP1",
-        "kp2" | "kp_2" => "KEY_KP2",
-        "kp3" | "kp_3" => "KEY_KP3",
-        "kp4" | "kp_4" => "KEY_KP4",
-        "kp5" | "kp_5" => "KEY_KP5",
-        "kp6" | "kp_6" => "KEY_KP6",
-        "kp7" | "kp_7" => "KEY_KP7",
-        "kp8" | "kp_8" => "KEY_KP8",
-        "kp9" | "kp_9" => "KEY_KP9",
-        "kpdelete" | "kp_delete" | "kpdecimal" | "kp_dot" => "KEY_KPDOT",
-        "kpenter" | "kp_enter" => "KEY_KPENTER",
-        "kpplus" | "kp_plus" => "KEY_KPPLUS",
-        "kpminus" | "kp_minus" => "KEY_KPMINUS",
-        "kpmultiply" | "kp_multiply" => "KEY_KPASTERISK",
-        "kpdivide" | "kp_divide" => "KEY_KPSLASH",
-        other => return Err(format!("Unknown key: '{other}'")),
-    };
-
-    KeyCode::from_str(canonical).map_err(|_| format!("Unknown key: '{value}'"))
-}
-
-#[cfg(target_os = "linux")]
-fn update_evdev_modifier(modifiers: &mut ModifierMask, key: KeyCode, pressed: bool) -> bool {
-    match key {
-        KeyCode::KEY_LEFTCTRL | KeyCode::KEY_RIGHTCTRL => modifiers.ctrl = pressed,
-        KeyCode::KEY_LEFTALT | KeyCode::KEY_RIGHTALT => modifiers.alt = pressed,
-        KeyCode::KEY_LEFTSHIFT | KeyCode::KEY_RIGHTSHIFT => modifiers.shift = pressed,
-        KeyCode::KEY_LEFTMETA | KeyCode::KEY_RIGHTMETA => modifiers.super_ = pressed,
-        _ => return false,
-    }
-    true
-}
-
-#[cfg(target_os = "linux")]
-fn handle_evdev_event(
-    app: &AppHandle,
-    registry: &Arc<Mutex<Vec<RegisteredShortcut>>>,
-    modifiers: &Arc<Mutex<ModifierMask>>,
-    key: KeyCode,
-    value: i32,
-) {
-    // ydotool emits a virtual keyboard stream while inserting a transcript.
-    // Ignore it so text such as an uppercase "F" cannot retrigger Shift+F.
-    if crate::input::is_inserting(app) {
-        return;
-    }
-
-    if value == 2 {
-        return;
-    }
-
-    if value == 1 && key == KeyCode::KEY_ESC && crate::dictation::cancel_pending(app) {
-        return;
-    }
-
-    if let Ok(mut current) = modifiers.lock() {
-        if update_evdev_modifier(&mut current, key, value == 1) {
-            return;
-        }
-    }
-
-    let matches = registry
-        .lock()
-        .map(|registered| {
-            registered
-                .iter()
-                .filter(|shortcut| {
-                    shortcut.evdev_key == key
-                        && (value == 0
-                            || modifiers
-                                .lock()
-                                .map(|current| *current == shortcut.modifiers)
-                                .unwrap_or(false))
-                })
-                .cloned()
-                .collect::<Vec<_>>()
-        })
-        .unwrap_or_default();
-
-    for shortcut in matches {
-        if value == 1 {
-            drive_press(app, &shortcut.key_str, shortcut.mode);
-        } else if value == 0 {
-            drive_release(app, &shortcut.key_str, shortcut.mode);
-        }
-    }
-}
-
 // ── Push-to-talk driver ────────────────────────────────────────────────────
 
 fn drive_press(app: &AppHandle, shortcut_key: &str, mode: TriggerMode) {
     log::info!("push-to-talk press: {} (mode={:?})", shortcut_key, mode);
 
-    // The toggle mode needs to know the current state to flip it; read
-    // the audio state directly. Hold mode always starts capture on press.
     let is_capturing = app
         .state::<Arc<crate::audio::AudioState>>()
         .capturing
@@ -334,7 +365,6 @@ fn drive_press(app: &AppHandle, shortcut_key: &str, mode: TriggerMode) {
             return;
         }
     } else {
-        // Toggle: user pressed while already recording — treat as stop.
         log::info!("toggle: stopping capture");
         if let Err(error) = crate::dictation::finish(app) {
             log::warn!("dictation finish failed: {error}");
@@ -353,8 +383,6 @@ fn drive_press(app: &AppHandle, shortcut_key: &str, mode: TriggerMode) {
 }
 
 fn drive_release(app: &AppHandle, shortcut_key: &str, mode: TriggerMode) {
-    // In toggle mode, release is a no-op — capture is bounded by the
-    // next press instead.
     if mode == TriggerMode::Toggle {
         return;
     }
@@ -376,82 +404,15 @@ fn drive_release(app: &AppHandle, shortcut_key: &str, mode: TriggerMode) {
 
 // ── Tauri commands ──────────────────────────────────────────────────────────
 
-/// Start the Wayland evdev listener. X11 and non-Linux platforms keep using
-/// Tauri's global-shortcut plugin; its Linux backend is X11-only.
+/// Kept for callers that probe shortcut availability. The exclusive Wayland
+/// listener starts only after a shortcut has been successfully registered.
 #[tauri::command]
-pub fn start_shortcut_listener(app: AppHandle) -> Result<(), String> {
-    if !uses_evdev_backend() {
-        return Ok(());
-    }
-
-    #[cfg(target_os = "linux")]
-    {
-        let running = app.state::<ListenerRunning>().0.clone();
-        if running
-            .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
-            .is_err()
-        {
-            return Ok(());
-        }
-
-        let keyboards = evdev::enumerate()
-            .filter(|(_, device)| {
-                device.supported_keys().is_some_and(|keys| {
-                    keys.contains(KeyCode::KEY_A) && keys.contains(KeyCode::KEY_ENTER)
-                })
-            })
-            .collect::<Vec<_>>();
-
-        if keyboards.is_empty() {
-            running.store(false, Ordering::SeqCst);
-            return Err(
-                "No readable keyboard devices found in /dev/input. Grant input-group access, then log out and back in."
-                    .to_string(),
-            );
-        }
-
-        let registry = app.state::<ShortcutRegistry>().0.clone();
-        let modifiers = Arc::new(Mutex::new(ModifierMask::default()));
-        let keyboard_count = keyboards.len();
-
-        for (path, mut device) in keyboards {
-            let app_for_thread = app.clone();
-            let registry_for_thread = registry.clone();
-            let modifiers_for_thread = modifiers.clone();
-            std::thread::spawn(move || loop {
-                match device.fetch_events() {
-                    Ok(events) => {
-                        for event in events {
-                            if let EventSummary::Key(_, key, value) = event.destructure() {
-                                handle_evdev_event(
-                                    &app_for_thread,
-                                    &registry_for_thread,
-                                    &modifiers_for_thread,
-                                    key,
-                                    value,
-                                );
-                            }
-                        }
-                    }
-                    Err(error) => {
-                        log::error!("evdev listener for {} stopped: {error}", path.display());
-                        break;
-                    }
-                }
-            });
-        }
-
-        log::info!("evdev shortcut listener started on {keyboard_count} keyboard device(s)");
-    }
-
+pub fn start_shortcut_listener(_app: AppHandle) -> Result<(), String> {
     Ok(())
 }
 
-/// Register a new shortcut to listen for. Format: "Ctrl+B", "Super+V", etc.
-/// Uses evdev on Linux/Wayland and Tauri's global-shortcut plugin elsewhere.
-///
-/// `mode` is optional and defaults to "hold". Pass "toggle" for tap-to-toggle
-/// behaviour where the release event is ignored.
+/// Register a new shortcut. Wayland uses an exclusive `handy-keys` listener;
+/// X11 and non-Linux platforms use Tauri's global-shortcut plugin.
 #[tauri::command]
 pub fn register_shortcut_evdev(
     app: AppHandle,
@@ -462,28 +423,37 @@ pub fn register_shortcut_evdev(
     let parsed: Shortcut = normalized
         .parse()
         .map_err(|e| format!("Couldn't parse shortcut '{shortcut_key}': {e}"))?;
-
     let trigger_mode = TriggerMode::from_str(mode.as_deref().unwrap_or("hold"));
-    let registry = app.state::<ShortcutRegistry>().0.clone();
 
     #[cfg(target_os = "linux")]
-    let (evdev_key, modifiers) = parse_evdev_shortcut(&shortcut_key)?;
+    let exclusive_hotkey: Option<Hotkey> = if uses_evdev_backend() {
+        Some(
+            shortcut_key
+                .parse()
+                .map_err(|error| format!("Couldn't parse shortcut '{shortcut_key}': {error}"))?,
+        )
+    } else {
+        None
+    };
 
-    // Whisply exposes one dictation shortcut. Remove the old binding before
-    // replacing it so changing the shortcut cannot leave a ghost handler.
+    let registry = app.state::<ShortcutRegistry>();
     let previous = {
-        let mut guard = registry.lock().map_err(|e| e.to_string())?;
+        let mut guard = registry.shortcuts.lock().map_err(|e| e.to_string())?;
         guard.drain(..).collect::<Vec<_>>()
     };
     for shortcut in previous {
         let _ = app.global_shortcut().unregister(shortcut.parsed);
     }
 
-    if uses_evdev_backend() {
-        start_shortcut_listener(app.clone())?;
+    #[cfg(target_os = "linux")]
+    if let Some(hotkey) = exclusive_hotkey {
+        registry.replace_exclusive_shortcut(
+            app.clone(),
+            hotkey,
+            shortcut_key.clone(),
+            trigger_mode,
+        )?;
     } else {
-        // Capture the original user-facing string so event payloads keep the
-        // value shown in settings rather than the normalized plugin value.
         let user_key = shortcut_key.clone();
         let app_for_handler = app.clone();
         app.global_shortcut()
@@ -497,15 +467,25 @@ pub fn register_shortcut_evdev(
             })?;
     }
 
-    let mut guard = registry.lock().map_err(|e| e.to_string())?;
+    #[cfg(not(target_os = "linux"))]
+    {
+        let user_key = shortcut_key.clone();
+        let app_for_handler = app.clone();
+        app.global_shortcut()
+            .on_shortcut(parsed, move |_app, _scut, event| match event.state {
+                ShortcutState::Pressed => drive_press(&app_for_handler, &user_key, trigger_mode),
+                ShortcutState::Released => drive_release(&app_for_handler, &user_key, trigger_mode),
+            })
+            .map_err(|e| {
+                log::error!("global_shortcut on_shortcut failed: {e}");
+                format!("Couldn't register shortcut '{shortcut_key}': {e}")
+            })?;
+    }
+
+    let mut guard = registry.shortcuts.lock().map_err(|e| e.to_string())?;
     guard.push(RegisteredShortcut {
         key_str: shortcut_key.clone(),
         parsed,
-        mode: trigger_mode,
-        #[cfg(target_os = "linux")]
-        evdev_key,
-        #[cfg(target_os = "linux")]
-        modifiers,
     });
 
     log::info!(
@@ -513,8 +493,6 @@ pub fn register_shortcut_evdev(
         shortcut_key,
         trigger_mode
     );
-
-    // Mirror to the main app so the Logs page can show it inline.
     let _ = tauri::Emitter::emit(
         &app,
         "whisply://shortcut-registered",
@@ -529,18 +507,22 @@ pub fn register_shortcut_evdev(
 /// Unregister a specific shortcut.
 #[tauri::command]
 pub fn unregister_shortcut_evdev(app: AppHandle, shortcut_key: String) -> Result<(), String> {
-    let registry = app.state::<ShortcutRegistry>().0.clone();
-    let mut guard = registry.lock().map_err(|e| e.to_string())?;
+    let registry = app.state::<ShortcutRegistry>();
+    let mut guard = registry.shortcuts.lock().map_err(|e| e.to_string())?;
     let to_remove: Vec<RegisteredShortcut> = guard
         .iter()
-        .filter(|s| s.key_str == shortcut_key)
+        .filter(|shortcut| shortcut.key_str == shortcut_key)
         .cloned()
         .collect();
-    guard.retain(|s| s.key_str != shortcut_key);
+    guard.retain(|shortcut| shortcut.key_str != shortcut_key);
     drop(guard);
 
-    for s in to_remove {
-        let _ = app.global_shortcut().unregister(s.parsed);
+    for shortcut in to_remove {
+        let _ = app.global_shortcut().unregister(shortcut.parsed);
+    }
+    #[cfg(target_os = "linux")]
+    if uses_evdev_backend() {
+        registry.clear_exclusive_shortcut()?;
     }
     log::info!("Unregistered shortcut: {}", shortcut_key);
     Ok(())
@@ -549,53 +531,37 @@ pub fn unregister_shortcut_evdev(app: AppHandle, shortcut_key: String) -> Result
 /// Unregister all shortcuts.
 #[tauri::command]
 pub fn unregister_all_shortcuts_evdev(app: AppHandle) -> Result<(), String> {
-    let registry = app.state::<ShortcutRegistry>().0.clone();
-    let mut guard = registry.lock().map_err(|e| e.to_string())?;
+    let registry = app.state::<ShortcutRegistry>();
+    let mut guard = registry.shortcuts.lock().map_err(|e| e.to_string())?;
     let drained: Vec<RegisteredShortcut> = guard.drain(..).collect();
     drop(guard);
 
-    for s in drained {
-        let _ = app.global_shortcut().unregister(s.parsed);
+    for shortcut in drained {
+        let _ = app.global_shortcut().unregister(shortcut.parsed);
+    }
+    #[cfg(target_os = "linux")]
+    if uses_evdev_backend() {
+        registry.clear_exclusive_shortcut()?;
     }
     log::info!("All shortcuts unregistered");
     Ok(())
 }
 
-#[cfg(all(test, target_os = "linux"))]
+#[cfg(test)]
 mod tests {
-    use super::*;
+    use super::normalize_for_plugin;
 
     #[test]
-    fn parses_wayland_shortcut_and_modifiers() {
-        let (key, modifiers) = parse_evdev_shortcut("Super+Shift+V").unwrap();
-
-        assert_eq!(key, KeyCode::KEY_V);
+    fn normalizes_shortcut_modifier_aliases() {
         assert_eq!(
-            modifiers,
-            ModifierMask {
-                shift: true,
-                super_: true,
-                ..ModifierMask::default()
-            }
+            normalize_for_plugin("control + option + space"),
+            "Ctrl+Alt+Space"
         );
     }
 
+    #[cfg(target_os = "linux")]
     #[test]
-    fn parses_ctrl_space_and_function_keys() {
-        let (space, modifiers) = parse_evdev_shortcut("Ctrl+Space").unwrap();
-        assert_eq!(space, KeyCode::KEY_SPACE);
-        assert!(modifiers.ctrl);
-
-        let (function, modifiers) = parse_evdev_shortcut("F8").unwrap();
-        assert_eq!(function, KeyCode::KEY_F8);
-        assert_eq!(modifiers, ModifierMask::default());
-
-        let _: Shortcut = normalize_for_plugin("Ctrl+Space").parse().unwrap();
-        let _: Shortcut = normalize_for_plugin("F8").parse().unwrap();
-    }
-
-    #[test]
-    fn rejects_shortcut_without_non_modifier_key() {
-        assert!(parse_evdev_shortcut("Ctrl+Shift").is_err());
+    fn parses_exclusive_ctrl_space_shortcut() {
+        let _: handy_keys::Hotkey = "Ctrl+Space".parse().unwrap();
     }
 }

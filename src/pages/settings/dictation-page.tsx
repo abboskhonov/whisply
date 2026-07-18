@@ -3,15 +3,26 @@ import { Check, Microphone, Warning } from "@phosphor-icons/react"
 
 import { Button } from "@/components/ui/button"
 import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import {
   PageHeader,
   PageShell,
   Section,
   SectionHeader,
 } from "@/components/page"
 import {
+  getSelectedMicrophone,
   listMicrophones,
+  setSelectedMicrophone,
   startAudioCapture,
   stopAudioCapture,
+  type DeviceInfo,
 } from "@/lib/audio"
 import { getMicrophoneStatus, type MicrophoneStatus } from "@/lib/system"
 import { isTauri } from "@/lib/tauri"
@@ -20,24 +31,39 @@ export function DictationSettingsPage() {
   const [microphone, setMicrophone] = React.useState<MicrophoneStatus | null>(
     null
   )
+  const [devices, setDevices] = React.useState<DeviceInfo[]>([])
+  const [selectedDevice, setSelectedDevice] = React.useState<string | null>(
+    null
+  )
   const [detail, setDetail] = React.useState("Checking microphone access…")
   const [checking, setChecking] = React.useState(true)
+  const [savingDevice, setSavingDevice] = React.useState(false)
 
   const checkMicrophone = React.useCallback(async () => {
     setChecking(true)
     try {
       if (isTauri()) {
-        const status = await getMicrophoneStatus()
+        const [status, availableDevices, configuredDevice] = await Promise.all([
+          getMicrophoneStatus(),
+          listMicrophones(),
+          getSelectedMicrophone(),
+        ])
         setMicrophone(status)
-        const devices = await listMicrophones()
-        const device = devices.find((item) => item.is_default) ?? devices[0]
+        setDevices(availableDevices)
+        setSelectedDevice(configuredDevice)
+        const activeDevice =
+          availableDevices.find((device) => device.name === configuredDevice) ??
+          availableDevices.find((device) => device.is_default) ??
+          availableDevices[0]
         setDetail(
           status.available
-            ? `${status.device_count} input device${status.device_count === 1 ? "" : "s"}${device ? ` · ${device.name}` : ""}`
+            ? `${status.device_count} input device${status.device_count === 1 ? "" : "s"}${activeDevice ? ` · ${activeDevice.name}` : ""}`
             : "No microphone devices detected."
         )
       } else {
         setMicrophone(null)
+        setDevices([])
+        setSelectedDevice(null)
         setDetail("Browser microphone access is checked when you grant it.")
       }
     } catch (cause) {
@@ -77,19 +103,49 @@ export function DictationSettingsPage() {
     }
   }
 
+  const selectDevice = async (nextDevice: string | null) => {
+    setSavingDevice(true)
+    try {
+      await setSelectedMicrophone(nextDevice)
+      setSelectedDevice(nextDevice)
+      await checkMicrophone()
+    } catch (cause) {
+      setDetail(cause instanceof Error ? cause.message : String(cause))
+    } finally {
+      setSavingDevice(false)
+    }
+  }
+
   const ready = microphone?.available ?? false
+  const defaultDevice = devices.find((device) => device.is_default)
+  const configuredDeviceMissing =
+    selectedDevice !== null &&
+    !devices.some((device) => device.name === selectedDevice)
+  const microphoneOptions = [
+    {
+      value: null,
+      label: `System default${defaultDevice ? ` · ${defaultDevice.name}` : ""}`,
+    },
+    ...(configuredDeviceMissing
+      ? [{ value: selectedDevice, label: `${selectedDevice} (unavailable)` }]
+      : []),
+    ...devices.map((device) => ({
+      value: device.name,
+      label: `${device.name}${device.is_default ? " (system default)" : ""}`,
+    })),
+  ]
 
   return (
     <PageShell>
       <PageHeader
         title="Dictation"
-        description="Check the microphone Whisply uses for local dictation."
+        description="Choose the microphone Whisply uses for local dictation."
       />
 
       <Section>
         <SectionHeader
           title="Microphone access"
-          description="Whisply uses your system-default input device."
+          description="Check that Whisply can record from the selected input."
         />
         <div className="flex items-start gap-3 rounded-lg border border-border/60 bg-card/40 px-4 py-3">
           <span
@@ -123,6 +179,38 @@ export function DictationSettingsPage() {
           >
             {ready ? "Test access" : "Grant access"}
           </Button>
+        </div>
+      </Section>
+
+      <Section>
+        <SectionHeader
+          title="Input device"
+          description="Use the system default or choose a microphone for future dictations."
+        />
+        <div className="rounded-lg border border-border/60 bg-card/40 px-4 py-3">
+          <p className="text-sm font-medium text-foreground">Microphone</p>
+          <Select
+            items={microphoneOptions}
+            value={selectedDevice}
+            disabled={!isTauri() || checking || savingDevice}
+            onValueChange={(value) => void selectDevice(value as string | null)}
+          >
+            <SelectTrigger aria-label="Dictation microphone" className="mt-2 w-full">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent alignItemWithTrigger={false}>
+              <SelectGroup>
+                {microphoneOptions.map((option) => (
+                  <SelectItem
+                    key={option.value ?? "system-default"}
+                    value={option.value}
+                  >
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectGroup>
+            </SelectContent>
+          </Select>
         </div>
       </Section>
 

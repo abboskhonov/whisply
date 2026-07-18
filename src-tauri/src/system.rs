@@ -217,6 +217,8 @@ pub fn get_update_channel() -> UpdateChannel {
 pub struct EvdevAccessStatus {
     /// Whether /dev/input/event* files can be opened for reading.
     pub can_read_events: bool,
+    /// Whether /dev/uinput can be opened for exclusive shortcut passthrough.
+    pub can_write_uinput: bool,
     /// Whether the current user is in the `input` group.
     pub in_input_group: bool,
     /// Whether `pkexec` is available on this system.
@@ -248,6 +250,13 @@ fn check_evdev_readable() -> bool {
         }
     }
     false
+}
+
+fn check_uinput_writable() -> bool {
+    std::fs::OpenOptions::new()
+        .write(true)
+        .open("/dev/uinput")
+        .is_ok()
 }
 
 fn check_in_input_group() -> bool {
@@ -302,11 +311,15 @@ fn check_pkexec_available() -> bool {
 #[tauri::command]
 pub fn get_evdev_access_status() -> EvdevAccessStatus {
     let can_read = check_evdev_readable();
+    let can_write_uinput = check_uinput_writable();
     let in_group = check_in_input_group();
     let pkexec = check_pkexec_available();
 
-    let message = if can_read {
-        "Global keyboard events are accessible.".to_string()
+    let message = if can_read && can_write_uinput {
+        "Exclusive global shortcuts are accessible.".to_string()
+    } else if can_read {
+        "Global keyboard events are accessible, but exclusive shortcuts need write access to /dev/uinput."
+            .to_string()
     } else if in_group {
         "You are in the 'input' group but permission changes may need a reboot."
             .to_string()
@@ -320,6 +333,7 @@ pub fn get_evdev_access_status() -> EvdevAccessStatus {
 
     EvdevAccessStatus {
         can_read_events: can_read,
+        can_write_uinput,
         in_input_group: in_group,
         pkexec_available: pkexec,
         message,

@@ -81,7 +81,6 @@ pub fn run() {
 
     builder
         .manage(shortcut::ShortcutRegistry::new())
-        .manage(shortcut::ListenerRunning::new())
         .manage(onboarding::OnboardingState::new())
         .manage(dictation::DictationState::new())
         .manage(models::ModelManager::new())
@@ -165,19 +164,11 @@ pub fn run() {
             let onboarding_state = app.state::<onboarding::OnboardingState>();
             onboarding_state.init(&handle);
             app.state::<models::ModelManager>().init(&handle);
+            app.state::<Arc<audio::AudioState>>().init(&handle);
             app.state::<transcription::TranscriptionState>().init(&handle);
             app.manage(history::HistoryStore::open(&handle)?);
             app.manage(snippets::SnippetStore::open(&handle)?);
             onboarding::open_if_incomplete(&handle);
-
-            // Tauri's Linux global-shortcut backend is X11-only. On Wayland,
-            // start the evdev listener used by the permission step instead.
-            // A permissions failure is recoverable: registration retries it.
-            if let Err(error) = shortcut::start_shortcut_listener(handle.clone()) {
-                log::warn!("shortcut listener not ready: {error}");
-            } else {
-                log::info!("shortcut listener ready");
-            }
 
             Ok(())
         })
@@ -202,6 +193,8 @@ pub fn run() {
             overlay::overlay_ready,
             overlay::set_overlay_position,
             audio::list_microphones,
+            audio::get_selected_microphone,
+            audio::set_selected_microphone,
             audio::start_audio_capture,
             audio::stop_audio_capture,
             audio::is_capturing,
