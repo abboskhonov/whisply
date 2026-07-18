@@ -141,9 +141,14 @@ fn finish_with_insertion(app: &AppHandle, should_insert: bool) -> Result<(), Str
     std::thread::spawn(move || {
         let audio_duration_ms = audio.samples.len() as u64 * 1000 / audio.sample_rate.max(1) as u64;
         let started = Instant::now();
-        let transcription = app.state::<crate::transcription::TranscriptionState>();
-        let result = transcription.transcribe(&app, &audio.samples, audio.sample_rate);
-        transcription.schedule_unload(app.clone());
+        let result = if !app.state::<DictationState>().is_active(generation) {
+            Err("Dictation was cancelled".to_string())
+        } else {
+            let transcription = app.state::<crate::transcription::TranscriptionState>();
+            let result = transcription.transcribe(&app, &audio.samples, audio.sample_rate);
+            transcription.schedule_unload(app.clone());
+            result
+        };
 
         let result = result.and_then(|text| {
             if text.trim().is_empty() {
@@ -274,5 +279,15 @@ mod tests {
 
         assert!(state.commit_pending(generation));
         assert!(!state.cancel_pending());
+    }
+
+    #[test]
+    fn cancelled_generation_is_inactive_before_transcription_is_requested() {
+        let state = DictationState::new();
+        let generation = state.begin_session();
+        assert!(state.make_cancellable(generation));
+        assert!(state.cancel_pending());
+
+        assert!(!state.is_active(generation));
     }
 }

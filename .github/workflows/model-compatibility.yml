@@ -1,0 +1,83 @@
+name: Model compatibility
+
+on:
+  pull_request:
+  push:
+    branches:
+      - master
+
+jobs:
+  model-compatibility:
+    name: Required model compatibility
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Restore pinned model fixtures
+        uses: actions/cache@v4
+        with:
+          path: .ci-models
+          key: ${{ runner.os }}-whisply-model-fixtures-v1
+
+      - name: Download and verify pinned fixtures
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .ci-models
+          download() {
+            local url="$1"
+            local path="$2"
+            local sha="$3"
+            if [ ! -f "$path" ]; then
+              curl --fail --location --retry 3 --silent --show-error "$url" -o "$path"
+            fi
+            echo "$sha  $path" | sha256sum --check --strict
+          }
+
+          download \
+            https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8.tar.bz2 \
+            .ci-models/parakeet.tar.bz2 \
+            5793d0fd397c5778d2cf2126994d58e9d56b1be7c04d13c7a15bb1b4eafb16bf
+          if [ ! -d .ci-models/parakeet ]; then
+            tar -xjf .ci-models/parakeet.tar.bz2 -C .ci-models
+            mv .ci-models/sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8 .ci-models/parakeet
+          fi
+
+          if [ ! -f .ci-models/gigaam/model.int8.onnx ]; then
+            mkdir -p .ci-models/gigaam
+            download \
+              'https://huggingface.co/istupakov/gigaam-multilingual-ctc-onnx/resolve/458860e1983aef670dd9795fb6af603c82767d5d/multilingual_ctc.int8.onnx?download=true' \
+              .ci-models/gigaam/model.raw.onnx \
+              e08e27ae5669b39f0c378fae101bbbb9a80505f74f9b66719c309bf5b894a480
+            cp .ci-models/gigaam/model.raw.onnx .ci-models/gigaam/model.int8.onnx
+            printf '\162\020\012\012vocab_size\022\00271\162\027\012\022subsampling_factor\022\0014\162\022\012\016normalize_type\022\000\162\017\012\012is_giga_am\022\0011' >> .ci-models/gigaam/model.int8.onnx
+          fi
+          echo 'cf47ca34a01262dd753394163cdaaf1a354f0c978ab5c9c19829ca46cba5f354  .ci-models/gigaam/model.int8.onnx' | sha256sum --check --strict
+          download \
+            'https://huggingface.co/istupakov/gigaam-multilingual-ctc-onnx/resolve/458860e1983aef670dd9795fb6af603c82767d5d/multilingual_vocab.txt?download=true' \
+            .ci-models/gigaam/tokens.txt \
+            4d130287892e1099fedfb3f93c4b4cf8a263151158801680b28977d1be4133f4
+          download \
+            https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/en.wav \
+            .ci-models/en.wav \
+            148b936b43ce7c546a866e64da059f0458aee2d65e617f16e9d94f06e8d99ed6
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Restore Rust cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install Linux build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libwebkit2gtk-4.1-dev libgtk-3-dev libgtk-layer-shell-dev libayatana-appindicator3-dev librsvg2-dev libasound2-dev pkg-config
+
+      - name: Decode pinned fixtures
+        env:
+          WHISPLY_TEST_PARAKEET_MODEL_DIR: ${{ github.workspace }}/.ci-models/parakeet
+          WHISPLY_TEST_GIGAAM_MODEL_DIR: ${{ github.workspace }}/.ci-models/gigaam
+          WHISPLY_TEST_WAV: ${{ github.workspace }}/.ci-models/en.wav
+        run: cargo test --manifest-path src-tauri/Cargo.toml compatibility_ -- --ignored
