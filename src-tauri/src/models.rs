@@ -52,6 +52,7 @@ pub struct ModelFile {
 pub enum ModelFormat {
     NemoTransducer,
     GigaAmCtc,
+    Qwen3Asr,
 }
 
 const GIGA_AM_MULTILINGUAL_FILES: [ModelFile; 2] = [
@@ -69,7 +70,7 @@ const GIGA_AM_MULTILINGUAL_FILES: [ModelFile; 2] = [
     },
 ];
 
-const MODELS: [ModelSpec; 3] = [
+const MODELS: [ModelSpec; 4] = [
     ModelSpec {
         id: "parakeet-tdt-0.6b-v3-int8",
         name: "Parakeet 0.6B Multilingual",
@@ -122,6 +123,25 @@ const MODELS: [ModelSpec; 3] = [
         source: ModelSource::Files(&GIGA_AM_MULTILINGUAL_FILES),
         format: ModelFormat::GigaAmCtc,
         download_size_bytes: 224_762_597,
+    },
+    ModelSpec {
+        id: "qwen3-asr-0.6b-int8",
+        name: "Qwen3 ASR 0.6B",
+        description: "High-accuracy multilingual dictation with native hotword support",
+        languages: "52 languages and dialects",
+        parameters: "600M",
+        architecture: "Qwen3-ASR",
+        owner: "Qwen",
+        license: "Apache 2.0",
+        source_url: "https://huggingface.co/Qwen/Qwen3-ASR-0.6B",
+        directory_name: "sherpa-onnx-qwen3-asr-0.6B-int8-2026-03-25",
+        source: ModelSource::Archive {
+            archive_name: "sherpa-onnx-qwen3-asr-0.6B-int8-2026-03-25.tar.bz2",
+            download_url: "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-qwen3-asr-0.6B-int8-2026-03-25.tar.bz2",
+            sha256: "393f8a14e2f5fb96746aaab342997a40641001fbd5bf9592a080a8329178ee96",
+        },
+        format: ModelFormat::Qwen3Asr,
+        download_size_bytes: 878_702_423,
     },
 ];
 
@@ -260,6 +280,14 @@ fn validate_model_dir(path: &Path, spec: ModelSpec) -> Result<(), String> {
             ("tokens.txt", 100),
         ],
         ModelFormat::GigaAmCtc => &[("model.int8.onnx", 100_000_000), ("tokens.txt", 100)],
+        ModelFormat::Qwen3Asr => &[
+            ("conv_frontend.onnx", 40_000_000),
+            ("encoder.int8.onnx", 100_000_000),
+            ("decoder.int8.onnx", 700_000_000),
+            ("tokenizer/vocab.json", 2_000_000),
+            ("tokenizer/merges.txt", 1_000_000),
+            ("tokenizer/tokenizer_config.json", 1_000),
+        ],
     };
 
     for (file, minimum_size) in required_files {

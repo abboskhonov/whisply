@@ -36,22 +36,14 @@ import {
   SectionHeader,
 } from "@/components/page"
 import { cn } from "@/lib/utils"
+import {
+  addDictionaryEntry,
+  deleteDictionaryEntry,
+  listDictionaryEntries,
+  type DictionaryEntry,
+} from "@/lib/dictionary"
 
 type EntryType = "name" | "acronym" | "jargon" | "other"
-
-const ENTRIES: Array<{
-  id: string
-  term: string
-  pronunciation?: string
-  type: EntryType
-  note?: string
-}> = [
-  { id: "d-1", term: "Whisply", type: "name", note: "Always capitalised." },
-  { id: "d-2", term: "Tauri", pronunciation: "TAW-ree", type: "name" },
-  { id: "d-3", term: "WPM", type: "acronym", note: "Words per minute." },
-  { id: "d-4", term: "ASR", type: "acronym", note: "Automatic speech recognition." },
-  { id: "d-5", term: "Linnea", pronunciation: "LIN-ay-ah", type: "name" },
-]
 
 const TYPE_LABEL: Record<EntryType, string> = {
   name: "Name",
@@ -62,18 +54,21 @@ const TYPE_LABEL: Record<EntryType, string> = {
 
 const TYPES: EntryType[] = ["name", "acronym", "jargon", "other"]
 
-function AddWordDialog() {
+function AddWordDialog({ onAdded = () => {} }: { onAdded?: () => void }) {
   const [open, setOpen] = React.useState(false)
   const [term, setTerm] = React.useState("")
   const [pronunciation, setPronunciation] = React.useState("")
   const [type, setType] = React.useState<EntryType>("name")
   const [note, setNote] = React.useState("")
+  const [error, setError] = React.useState<string | null>(null)
+  const [saving, setSaving] = React.useState(false)
 
   const reset = () => {
     setTerm("")
     setPronunciation("")
     setType("name")
     setNote("")
+    setError(null)
   }
 
   const handleOpenChange = (next: boolean) => {
@@ -81,11 +76,25 @@ function AddWordDialog() {
     if (!next) reset()
   }
 
-  const handleAdd = () => {
+  const handleAdd = async () => {
     if (!term.trim()) return
-    // TODO: persist entry
-    setOpen(false)
-    reset()
+    setSaving(true)
+    setError(null)
+    try {
+      await addDictionaryEntry({
+        term: term.trim(),
+        pronunciation: pronunciation.trim() || null,
+        entry_type: type,
+        note: note.trim() || null,
+      })
+      onAdded()
+      setOpen(false)
+      reset()
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Could not save word.")
+    } finally {
+      setSaving(false)
+    }
   }
 
   return (
@@ -117,10 +126,7 @@ function AddWordDialog() {
           </div>
 
           <div className="flex flex-col gap-1.5">
-            <label
-              htmlFor="dict-pron"
-              className="text-xs font-medium"
-            >
+            <label htmlFor="dict-pron" className="text-xs font-medium">
               Pronunciation{" "}
               <span className="font-normal text-muted-foreground">
                 (optional)
@@ -173,14 +179,22 @@ function AddWordDialog() {
               onChange={(e) => setNote(e.target.value)}
             />
           </div>
+          {error ? (
+            <p role="alert" className="text-sm text-destructive">
+              {error}
+            </p>
+          ) : null}
         </div>
 
         <DialogFooter>
           <DialogClose render={<Button variant="outline" />}>
             Cancel
           </DialogClose>
-          <Button onClick={handleAdd} disabled={!term.trim()}>
-            Add word
+          <Button
+            onClick={() => void handleAdd()}
+            disabled={!term.trim() || saving}
+          >
+            {saving ? "Adding…" : "Add word"}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -189,12 +203,26 @@ function AddWordDialog() {
 }
 
 export function DictionaryPage() {
+  const [entries, setEntries] = React.useState<DictionaryEntry[]>([])
+  const [query, setQuery] = React.useState("")
+  const refresh = React.useCallback(() => {
+    listDictionaryEntries().then(setEntries).catch(console.error)
+  }, [])
+  React.useEffect(() => {
+    refresh()
+  }, [refresh])
+  const visible = entries.filter((entry) =>
+    [entry.term, entry.pronunciation, entry.note]
+      .join(" ")
+      .toLowerCase()
+      .includes(query.toLowerCase())
+  )
   return (
     <PageShell>
       <PageHeader
         title="Dictionary"
         description="Custom words Whisply always recognises and spells correctly."
-        actions={<AddWordDialog />}
+        actions={<AddWordDialog onAdded={refresh} />}
       />
 
       <Section>
@@ -206,6 +234,8 @@ export function DictionaryPage() {
           <Input
             placeholder="Search words, acronyms, or notes…"
             className="h-9 pl-9 text-sm"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
           />
         </div>
       </Section>
@@ -213,11 +243,11 @@ export function DictionaryPage() {
       <Section>
         <SectionHeader
           title="Words"
-          description={`${ENTRIES.length} entries`}
+          description={`${entries.length} entries`}
         />
-        {ENTRIES.length > 0 ? (
+        {visible.length > 0 ? (
           <List>
-            {ENTRIES.map((entry) => (
+            {visible.map((entry) => (
               <ListItem key={entry.id}>
                 <ListRow>
                   <ListLeading
@@ -239,13 +269,18 @@ export function DictionaryPage() {
                       variant="secondary"
                       className="rounded-full px-2 py-0 text-[10.5px] font-medium tracking-wide uppercase"
                     >
-                      {TYPE_LABEL[entry.type]}
+                      {TYPE_LABEL[entry.entry_type]}
                     </Badge>
                     <Button
                       variant="ghost"
                       size="icon-xs"
                       className="text-muted-foreground opacity-0 transition-opacity group-hover/item:opacity-100"
                       aria-label={`Remove ${entry.term}`}
+                      onClick={() =>
+                        deleteDictionaryEntry(entry.id)
+                          .then(refresh)
+                          .catch(console.error)
+                      }
                     >
                       <Trash className="size-3.5" />
                     </Button>
@@ -267,7 +302,7 @@ export function DictionaryPage() {
             icon={<BookOpen weight="regular" className="size-5" />}
             title="Your dictionary is empty"
             description="Add names, jargon, or acronyms so Whisply spells them right."
-            action={<AddWordDialog />}
+            action={<AddWordDialog onAdded={refresh} />}
           />
         )}
       </Section>

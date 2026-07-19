@@ -1,5 +1,6 @@
 mod audio;
 mod dictation;
+mod dictionary;
 mod input;
 mod history;
 mod models;
@@ -168,6 +169,7 @@ pub fn run() {
             app.state::<transcription::TranscriptionState>().init(&handle);
             app.manage(history::HistoryStore::open(&handle)?);
             app.manage(snippets::SnippetStore::open(&handle)?);
+            app.manage(dictionary::DictionaryStore::open(&handle)?);
             onboarding::open_if_incomplete(&handle);
 
             Ok(())
@@ -209,6 +211,9 @@ pub fn run() {
             snippets::list_snippets,
             snippets::add_snippet,
             snippets::delete_snippet,
+            dictionary::list_dictionary_entries,
+            dictionary::add_dictionary_entry,
+            dictionary::delete_dictionary_entry,
             dictation::start_playground_dictation,
             dictation::stop_playground_dictation,
             transcription::get_model_memory_settings,
