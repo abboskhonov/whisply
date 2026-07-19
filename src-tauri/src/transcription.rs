@@ -1,8 +1,8 @@
 use crate::models::ModelFormat;
 use serde::{Deserialize, Serialize};
 use sherpa_onnx::{
-    OfflineNemoEncDecCtcModelConfig, OfflineRecognizer, OfflineRecognizerConfig,
-    OfflineTransducerModelConfig,
+    OfflineNemoEncDecCtcModelConfig, OfflineQwen3ASRModelConfig, OfflineRecognizer,
+    OfflineRecognizerConfig, OfflineTransducerModelConfig,
 };
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -38,6 +38,8 @@ impl ModelMemorySettings {
 
 struct CachedRecognizer {
     model_dir: PathBuf,
+    hotwords_revision: u64,
+    hotwords: String,
     recognizer: OfflineRecognizer,
 }
 
@@ -214,7 +216,21 @@ impl TranscriptionState {
         let (model_dir, format) = app
             .state::<crate::models::ModelManager>()
             .selected_model(app)?;
-        self.transcribe_with_model(&model_dir, format, samples, sample_rate)
+        let dictionary = app.state::<crate::dictionary::DictionaryStore>();
+        let text = if matches!(format, ModelFormat::Qwen3Asr) {
+            let (hotwords_revision, hotwords) = dictionary.hotwords();
+            self.transcribe_with_hotwords(
+                &model_dir,
+                format,
+                samples,
+                sample_rate,
+                hotwords_revision,
+                &hotwords,
+            )?
+        } else {
+            self.transcribe_with_hotwords(&model_dir, format, samples, sample_rate, 0, "")?
+        };
+        Ok(dictionary.apply(&text))
     }
 
     /// Release the loaded recognizer. Speech models are large enough that
@@ -236,6 +252,7 @@ impl TranscriptionState {
         }
     }
 
+    #[cfg(test)]
     pub fn transcribe_with_model(
         &self,
         model_dir: &Path,
@@ -243,17 +260,32 @@ impl TranscriptionState {
         samples: &[f32],
         sample_rate: u32,
     ) -> Result<String, String> {
+        self.transcribe_with_hotwords(model_dir, format, samples, sample_rate, 0, "")
+    }
+
+    fn transcribe_with_hotwords(
+        &self,
+        model_dir: &Path,
+        format: ModelFormat,
+        samples: &[f32],
+        sample_rate: u32,
+        hotwords_revision: u64,
+        hotwords: &str,
+    ) -> Result<String, String> {
         validate_audio(samples, sample_rate)?;
         self.unload_timer.cancel();
         let mut cached = self.recognizer.lock().map_err(|error| error.to_string())?;
-        if cached
-            .as_ref()
-            .is_none_or(|current| current.model_dir != model_dir)
-        {
+        if cached.as_ref().is_none_or(|current| {
+            current.model_dir != model_dir
+                || current.hotwords_revision != hotwords_revision
+                || current.hotwords != hotwords
+        }) {
             log::info!("loading local speech model from {}", model_dir.display());
             *cached = Some(CachedRecognizer {
-                recognizer: create_recognizer(model_dir, format)?,
                 model_dir: model_dir.to_path_buf(),
+                hotwords_revision,
+                hotwords: hotwords.to_string(),
+                recognizer: create_recognizer_with_hotwords(model_dir, format, hotwords)?,
             });
         }
 
@@ -303,6 +335,14 @@ pub(crate) fn create_recognizer(
     model_dir: &Path,
     format: ModelFormat,
 ) -> Result<OfflineRecognizer, String> {
+    create_recognizer_with_hotwords(model_dir, format, "")
+}
+
+fn create_recognizer_with_hotwords(
+    model_dir: &Path,
+    format: ModelFormat,
+    hotwords: &str,
+) -> Result<OfflineRecognizer, String> {
     let path = |name: &str| model_dir.join(name).to_string_lossy().into_owned();
     let mut config = OfflineRecognizerConfig::default();
     match format {
@@ -320,8 +360,21 @@ pub(crate) fn create_recognizer(
                 model: Some(path("model.int8.onnx")),
             };
         }
+        ModelFormat::Qwen3Asr => {
+            config.model_config.qwen3_asr = OfflineQwen3ASRModelConfig {
+                conv_frontend: Some(path("conv_frontend.onnx")),
+                encoder: Some(path("encoder.int8.onnx")),
+                decoder: Some(path("decoder.int8.onnx")),
+                tokenizer: Some(path("tokenizer")),
+                hotwords: (!hotwords.is_empty()).then(|| hotwords.to_string()),
+                ..Default::default()
+            };
+            config.model_config.model_type = Some("qwen3_asr".to_string());
+        }
     }
-    config.model_config.tokens = Some(path("tokens.txt"));
+    if !matches!(format, ModelFormat::Qwen3Asr) {
+        config.model_config.tokens = Some(path("tokens.txt"));
+    }
     config.model_config.provider = Some("cpu".to_string());
     config.model_config.num_threads = std::thread::available_parallelism()
         .map(|threads| threads.get().min(4) as i32)
